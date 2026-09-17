@@ -9,7 +9,18 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "21366c86f3d346ee83aab3f6bf3f017b",
+      // no `wrangler dev` o Hyperdrive aponta para o Postgres do docker compose
+      "localConnectionString": "postgres://classa:classa@localhost:5432/classa"
+    }
+  ],
+  "observability": { "enabled": true },
+  // valores públicos; segredos (BETTER_AUTH_SECRET, BETTER_AUTH_URL, SIGNUP_ALLOWED_EMAILS)
+  // ficam em `wrangler secret put` e, no local, em apps/api/.dev.vars
   "vars": {
-    "APP_ENV": "local"
+    "APP_ENV": "production"
   }
 }

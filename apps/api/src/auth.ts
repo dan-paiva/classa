@@ -1,6 +1,7 @@
 import { authAccount, authSession, authUser, authVerification, type Database } from "@classa/db";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError } from "better-auth/api";
 import { uuidv7 } from "uuidv7";
 
 export type AuthConfig = {
@@ -8,9 +9,22 @@ export type AuthConfig = {
   secret: string;
   baseURL: string;
   trustedOrigins?: string[];
+  /**
+   * E-mails que podem criar conta. Vazio ou ausente = cadastro aberto (desenvolvimento local).
+   * Em produção vem de SIGNUP_ALLOWED_EMAILS.
+   */
+  allowedSignupEmails?: string[];
 };
 
-export function createAuth({ db, secret, baseURL, trustedOrigins = [] }: AuthConfig) {
+export function parseEmailList(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function createAuth({ db, secret, baseURL, trustedOrigins = [], allowedSignupEmails = [] }: AuthConfig) {
+  const allowed = new Set(allowedSignupEmails.map((e) => e.toLowerCase()));
   return betterAuth({
     secret,
     baseURL,
@@ -23,6 +37,17 @@ export function createAuth({ db, secret, baseURL, trustedOrigins = [] }: AuthCon
     emailAndPassword: { enabled: true, minPasswordLength: 10 },
     advanced: { database: { generateId: () => uuidv7() } },
     telemetry: { enabled: false },
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => {
+            if (allowed.size > 0 && !allowed.has(user.email.toLowerCase())) {
+              throw new APIError("FORBIDDEN", { message: "O cadastro não está liberado para este e-mail." });
+            }
+          },
+        },
+      },
+    },
   });
 }
 
