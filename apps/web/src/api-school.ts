@@ -359,6 +359,20 @@ export type MyArea = {
   lessons: { id: string; startsAt: string; endsAt: string; state: LessonState; className: string; courseName: string; courseColor: string; teacherName: string | null; roomName: string | null; roomLink: string | null; enrollmentId?: string; myStatus?: AttendanceStatus; cancelledInTime?: boolean | null }[];
 };
 
+export type AuditEntry = {
+  id: string;
+  createdAt: string;
+  entity: string;
+  entityId: string;
+  action: string;
+  actorName: string;
+  actorEmail: string | null;
+  justification: string | null;
+  changed: string[];
+  before: unknown;
+  after: unknown;
+};
+
 export type GenerationResult = { created: number; existing: number; skipped: { date: string; startTime: string; reason: string }[]; conflicts: { date: string; startTime: string }[] };
 
 /* ---------------------------------------------------------------------- rotas */
@@ -466,6 +480,11 @@ export const school = {
   setMemberBlocked: (slug: string, id: string, blocked: boolean) => request(`${t(slug)}/users/${id}/${blocked ? "block" : "unblock"}`, post()),
   myArea: (slug: string) => request<MyArea>(`${t(slug)}/minha-area`),
   myLesson: (slug: string, lessonId: string, action: "cancelar" | "reagendar") => request(`${t(slug)}/minha-area/aulas/${lessonId}/${action}`, post()),
+
+  audit: (slug: string, filters: { entity?: string; page?: number }) =>
+    request<{ entries: AuditEntry[]; hasMore: boolean; entities: { entity: string; n: number }[] }>(
+      `${t(slug)}/audit${qs({ entity: filters.entity, page: filters.page ? String(filters.page) : undefined })}`,
+    ),
 
   payroll: (slug: string, month: string) => request<{ payroll: Payroll; periods: PayrollPeriod[] }>(`${t(slug)}/payroll?month=${month}`),
   closeMonth: (slug: string, month: string) => request(`${t(slug)}/payroll/${month}/close`, post()),

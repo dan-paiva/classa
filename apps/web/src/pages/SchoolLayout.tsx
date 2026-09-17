@@ -18,6 +18,7 @@ const NAV = [
   { to: "/e/$slug/cursos", label: "Cursos", resource: "cursos" },
   { to: "/e/$slug/financeiro", label: "Financeiro", resource: "financeiro" },
   { to: "/e/$slug/folha", label: "Folha", resource: "folha" },
+  { to: "/e/$slug/auditoria", label: "Auditoria", resource: "auditoria" },
   { to: "/e/$slug/configuracoes", label: "Configurações", resource: "configuracoes" },
 ] as const;
 

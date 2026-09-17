@@ -1,6 +1,7 @@
 import { createRootRoute, createRoute, createRouter, Outlet, useRouterState } from "@tanstack/react-router";
 import { authClient } from "./auth-client.ts";
 import { Agenda } from "./pages/Agenda.tsx";
+import { Audit } from "./pages/Audit.tsx";
 import { ClassGroupDetail } from "./pages/ClassGroupDetail.tsx";
 import { ClassGroups } from "./pages/ClassGroups.tsx";
 import { Companies, CompanyDetail } from "./pages/Companies.tsx";
@@ -55,6 +56,7 @@ const companyRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/em
 const leadsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/leads", component: Leads });
 const flowsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/acoes", component: Flows });
 const myAreaRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/minha-area", component: MyArea });
+const auditRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/auditoria", component: Audit });
 const settingsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/configuracoes", component: Settings });
 
 const routeTree = rootRoute.addChildren([
@@ -76,6 +78,7 @@ const routeTree = rootRoute.addChildren([
     courseRoute,
     financeRoute,
     payrollRoute,
+    auditRoute,
     myAreaRoute,
     leadsRoute,
     flowsRoute,

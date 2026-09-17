@@ -131,6 +131,16 @@ describe("perfis de acesso", () => {
     expect((await admin.json("/courses")).status).toBe(200);
   });
 
+  it("auditoria: admin vê quem mudou o quê; demais perfis não", async () => {
+    const res = await body<{ entries: { entity: string; action: string; actorEmail: string | null }[]; entities: { entity: string }[] }>(await admin.json("/audit?entity=student"));
+    expect(res.entries.length).toBeGreaterThan(0);
+    expect(res.entries.every((e) => e.entity === "student")).toBe(true);
+    expect(res.entries.some((e) => e.action === "create" && e.actorEmail === "admin@acesso.classa.dev")).toBe(true);
+    expect(res.entities.map((e) => e.entity)).toContain("invitation");
+    expect((await as(studentCookie, "/audit")).status).toBe(403); // a coordenação virou admin no teste anterior
+    expect((await as(teacherCookie, "/audit")).status).toBe(403);
+  });
+
   it("convite para quem já tem acesso é recusado; aceite com outro e-mail também", async () => {
     expect((await admin.json("/invitations", "POST", { email: "coord@acesso.classa.dev", profileType: "admin" })).status).toBe(409);
     const { link } = await body<{ link: string }>(await admin.json("/invitations", "POST", { email: "novo@acesso.classa.dev", profileType: "colaborador", level: 3, areas: { com: "total" } }));
