@@ -811,3 +811,77 @@ export const companyCharge = pgTable(
   },
   (t) => [unique("company_charge_month_uq").on(t.companyId, t.month)],
 );
+
+/* ---------------------------------------------------------------------------
+ * Comercial e operação: leads e fluxos em kanban
+ * ------------------------------------------------------------------------- */
+
+export const LEAD_STAGE_VALUES = ["captado", "contato", "nivelamento", "proposta", "matriculado", "perdido"] as const;
+
+export const lead = pgTable(
+  "lead",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    name: text("name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    origin: text("origin").notNull(),
+    campaign: text("campaign"),
+    courseId: uuid("course_id").references(() => course.id),
+    consultantUserId: text("consultant_user_id"),
+    stage: text("stage", { enum: LEAD_STAGE_VALUES }).notNull().default("captado"),
+    previousStage: text("previous_stage", { enum: LEAD_STAGE_VALUES }),
+    lostReason: text("lost_reason"),
+    temperature: text("temperature", { enum: ["frio", "morno", "quente"] }),
+    nextAction: text("next_action"),
+    nextActionOn: date("next_action_on"),
+    consent: boolean("consent").notNull().default(false),
+    studentId: uuid("student_id").references(() => student.id),
+    stageChangedAt: tstz("stage_changed_at").notNull().defaultNow(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("lead_tenant_stage_idx").on(t.tenantId, t.stage)],
+);
+
+export const workflowCard = pgTable(
+  "workflow_card",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    flow: text("flow").notNull(),
+    stage: text("stage").notNull(),
+    title: text("title").notNull(),
+    /** Valores dos campos do fluxo e marcas dos efeitos já executados. */
+    data: jsonb("data").$type<Record<string, unknown>>().notNull(),
+    stageChangedAt: tstz("stage_changed_at").notNull().defaultNow(),
+    createdBy: text("created_by"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("workflow_card_tenant_flow_idx").on(t.tenantId, t.flow, t.stage)],
+);
+
+export const workflowTransition = pgTable(
+  "workflow_transition",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    cardId: uuid("card_id")
+      .notNull()
+      .references(() => workflowCard.id),
+    fromStage: text("from_stage"),
+    toStage: text("to_stage").notNull(),
+    note: text("note"),
+    actorId: text("actor_id"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("workflow_transition_card_idx").on(t.cardId)],
+);

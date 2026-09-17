@@ -310,6 +310,35 @@ export type Payroll = {
 };
 export type PayrollPeriod = { id: string; month: string; closedAt: string; netCents: number; lessons: number; reopenedAt: string | null; reopenJustification: string | null };
 
+export type Lead = {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  origin: string;
+  campaign: string | null;
+  courseId: string | null;
+  courseName: string | null;
+  stage: "captado" | "contato" | "nivelamento" | "proposta" | "matriculado" | "perdido";
+  lostReason: string | null;
+  temperature: "frio" | "morno" | "quente" | null;
+  nextAction: string | null;
+  nextActionOn: string | null;
+  studentId: string | null;
+  daysInStage: number;
+  stalled: boolean;
+};
+
+export type WorkflowCard = { id: string; flow: string; stage: string; title: string; data: Record<string, unknown>; stageChangedAt: string; createdAt: string };
+export type WorkflowTransition = { id: string; fromStage: string | null; toStage: string; note: string | null; createdAt: string };
+export type FlowOptions = {
+  lessons?: { id: string; startsAt: string; endsAt?: string; className: string; courseId: string; moduleId: string | null; teacherId: string | null }[];
+  enrollments?: { id: string; studentName: string; className: string; courseId: string; endsOn: string }[];
+  absences?: { id: string; studentName: string; startsAt: string; className: string; courseId: string }[];
+  students?: { id: string; name: string; cents?: number }[];
+};
+export type RenewalItem = { enrollmentId: string; endsOn: string; studentId: string; studentName: string; className: string; courseName: string; balance: number; urgent: boolean };
+
 export type GenerationResult = { created: number; existing: number; skipped: { date: string; startTime: string; reason: string }[]; conflicts: { date: string; startTime: string }[] };
 
 /* ---------------------------------------------------------------------- rotas */
@@ -394,6 +423,20 @@ export const school = {
   generateCharge: (slug: string, id: string, month: string) => request(`${t(slug)}/companies/${id}/charges`, post({ month })),
   payCharge: (slug: string, chargeId: string, method: PaymentMethod) => request(`${t(slug)}/company-charges/${chargeId}/pay`, post({ method })),
   recordReport: (slug: string, id: string) => request(`${t(slug)}/companies/${id}/report`, post()),
+
+  leads: (slug: string) => request<{ leads: Lead[] }>(`${t(slug)}/leads`),
+  createLead: (slug: string, input: Partial<Lead> & { name: string; origin: string }) => request<{ lead: Lead }>(`${t(slug)}/leads`, post(input)),
+  moveLead: (slug: string, id: string, body: { to: "avancar" } | { to: "perdido"; reason: string } | { to: "reabrir" }) => request<{ lead: Lead }>(`${t(slug)}/leads/${id}/move`, post(body)),
+  convertLead: (slug: string, id: string) => request<{ lead: Lead }>(`${t(slug)}/leads/${id}/convert`, post()),
+
+  flows: (slug: string) => request<{ openCounts: Record<string, number> }>(`${t(slug)}/flows`),
+  cards: (slug: string, flow: string) => request<{ cards: WorkflowCard[] }>(`${t(slug)}/flows/${flow}/cards`),
+  flowOptions: (slug: string, flow: string) => request<{ options: FlowOptions }>(`${t(slug)}/flows/${flow}/options`),
+  renewalQueue: (slug: string) => request<{ queue: RenewalItem[] }>(`${t(slug)}/renewal-queue`),
+  createCard: (slug: string, flow: string, data: Record<string, unknown>) => request<{ card: WorkflowCard }>(`${t(slug)}/flows/${flow}/cards`, post({ data })),
+  card: (slug: string, id: string) => request<{ card: WorkflowCard; transitions: WorkflowTransition[] }>(`${t(slug)}/cards/${id}`),
+  updateCard: (slug: string, id: string, data: Record<string, unknown>) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}`, patch({ data })),
+  moveCard: (slug: string, id: string, to: string, note?: string) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}/move`, post({ to, note })),
 
   payroll: (slug: string, month: string) => request<{ payroll: Payroll; periods: PayrollPeriod[] }>(`${t(slug)}/payroll?month=${month}`),
   closeMonth: (slug: string, month: string) => request(`${t(slug)}/payroll/${month}/close`, post()),

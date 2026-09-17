@@ -34,6 +34,7 @@ import { cancelLesson, cancelStudentLesson, changeLessonTeacher, concludeLesson,
 import { createRoom, createStudent, createTeacher, setStudentStatus } from "../src/services/people.ts";
 import { closeMonth, markLinePaid, overrideLessonRate, requestSupport, setClassGroupTeacherRate, computePayroll } from "../src/services/payroll.ts";
 import { createClassGroup, generateLessons, importNationalHolidays } from "../src/services/schedule.ts";
+import { convertLead, createCard, createLead, flowOptions, moveCard, moveLead, updateCard } from "../src/services/workflows.ts";
 
 const SLUG = "demo";
 const TZ = "America/Sao_Paulo";
@@ -87,7 +88,7 @@ async function resetDemo(db: Database) {
   const id = t.id;
   // ordem inversa das dependências
   for (const table of [
-    "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
+    "workflow_transition", "workflow_card", "lead", "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
     "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "person",
     "room", "course_module", "course", "audit_log", "membership",
   ]) {
@@ -222,7 +223,7 @@ async function main() {
       { course: corporativo, module: 0, name: "Empresa Alfa · Manhã", teacher: 2, room: "s102", modality: "presencial", schedules: [[2, "08:00"], [4, "08:00"]] },
       { course: corporativo, module: 1, name: "Empresa Alfa · Almoço", teacher: 8, room: "s101", modality: "presencial", schedules: [[2, "12:00"], [4, "12:00"]] },
     ];
-    const groups = [];
+    const groups: Awaited<ReturnType<typeof createClassGroup>>["classGroup"][] = [];
     for (const g of groupSpecs) {
       const { classGroup } = await createClassGroup(nowCtx, {
         courseId: g.course.id,
@@ -482,6 +483,77 @@ async function main() {
     await setStudentStatus(nowCtx, students[61]!.id, "inativo");
     const changed = await refreshDelinquency(nowCtx);
     log(`situações: 1 cancelado, 1 congelado, 1 suspenso, 1 inativo, ${changed} inadimplentes automáticos`);
+
+    /* ------------------------------------------------------------------ leads */
+    const origins = ["Site", "Redes sociais", "Indicação", "Buscador", "Empresa parceira", "Evento"];
+    const courseIds = [ingles.id, espanhol.id, particular.id];
+    let leads = 0;
+    for (let i = 0; i < 28; i++) {
+      const name = fullName();
+      const born = at(base, new Date(realNow.getTime() - int(1, 40) * 86400_000));
+      const l = await createLead(born, { name, email: chance(0.8) ? emailOf(name) : null, phone: phone(), origin: pick(origins), courseId: pick(courseIds), temperature: pick(["frio", "morno", "quente", null] as const), consent: true });
+      const steps = pick([0, 0, 1, 1, 2, 3, 3, 4, 5]);
+      const later = at(base, new Date(Math.min(realNow.getTime(), born.now.getTime() + int(1, 20) * 86400_000)));
+      for (let k = 0; k < Math.min(steps, 3); k++) await moveLead(later, l.id, { to: "avancar" });
+      if (steps === 4) await convertLead(later, l.id);
+      if (steps === 5) await moveLead(later, l.id, { to: "perdido", reason: pick(["Preço", "Horário", "Sem resposta", "Escolheu outra escola", "Adiou os estudos"]) });
+      leads++;
+    }
+    log(`${leads} leads espalhados pelo funil`);
+
+    /* ----------------------------------------------------------------- fluxos */
+    const tryFlow = async (label: string, fn: () => Promise<unknown>) => {
+      try {
+        await fn();
+      } catch (err) {
+        log(`fluxo "${label}" pulado: ${(err as Error).message}`);
+      }
+    };
+    const subOptions = ((await flowOptions(nowCtx, "substituicao")) as { lessons?: { id: string; teacherId: string | null }[] }).lessons ?? [];
+    const levelOptions = (await flowOptions(nowCtx, "nivel")).enrollments ?? [];
+    await tryFlow("substituição", async () => {
+      const aula = subOptions.find((l) => l.teacherId);
+      const card = await createCard(nowCtx, "substituicao", { lessonId: aula!.id, reason: "Doença" });
+      await moveCard(nowCtx, card.id, "buscando", "Pedi disponibilidade para dois professores");
+    });
+    await tryFlow("substituição", async () => {
+      await createCard(nowCtx, "substituicao", { lessonId: subOptions[5]!.id, reason: "Compromisso pessoal" });
+    });
+    await tryFlow("mudança de nível", async () => {
+      const e = levelOptions.find((x) => x.className.startsWith("Básico 1 · Seg"));
+      const target = groups.find((g) => g.name.startsWith("Básico 2"));
+      const card = await createCard(nowCtx, "nivel", { enrollmentId: e!.id });
+      await moveCard(nowCtx, card.id, "teste");
+      await updateCard(nowCtx, card.id, { result: "A2 consolidado", targetClassGroupId: target!.id });
+    });
+    await tryFlow("reposição", async () => {
+      const absences = (await flowOptions(nowCtx, "reposicao")).absences ?? [];
+      await createCard(nowCtx, "reposicao", { missedLessonStudentId: absences[0]!.id, notes: "Atestado médico" });
+    });
+    await tryFlow("admissão", async () => {
+      await createCard(nowCtx, "admissao", { name: "Candidata Aula Teste", email: "candidata@exemplo.com", notes: "Indicação de professor" });
+      const c2 = await createCard(nowCtx, "admissao", { name: "Candidato Espanhol", email: "candidato.es@exemplo.com" });
+      await moveCard(nowCtx, c2.id, "entrevista");
+    });
+    await tryFlow("cobrança", async () => {
+      const debtors = (await flowOptions(nowCtx, "cobranca")).students ?? [];
+      const card = await createCard(nowCtx, "cobranca", { studentId: debtors[0]!.id, method: "pix" });
+      await moveCard(nowCtx, card.id, "contato", "Mensagem enviada");
+      await updateCard(nowCtx, card.id, { agreement: "Quita tudo até o dia 30" });
+      await moveCard(nowCtx, card.id, "negociacao");
+    });
+    await tryFlow("retenção", async () => {
+      const st = students[20]!;
+      const card = await createCard(nowCtx, "retencao", { studentId: st.id, reason: "Horário" });
+      await updateCard(nowCtx, card.id, { offer: "Troca para a turma de sábado sem custo" });
+      await moveCard(nowCtx, card.id, "tentativa");
+    });
+    await tryFlow("campanha", async () => {
+      const c1 = await createCard(nowCtx, "campanha", { name: "Volta às aulas de outubro", channel: "Redes sociais", audience: "Adultos 25-40 na região" });
+      await moveCard(nowCtx, c1.id, "producao");
+      await createCard(nowCtx, "campanha", { name: "Indique um amigo" });
+    });
+    log("cartões em todos os fluxos (substituição, nível, reposição, admissão, cobrança, retenção, campanhas)");
 
     const active = await listEnrollments(nowCtx, { activeOnly: true });
     const high = active.filter((e) => e.usage >= 0.8).length;
