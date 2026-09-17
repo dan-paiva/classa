@@ -1,0 +1,20 @@
+node_modules/
+dist/
+.turbo/
+.wrangler/
+coverage/
+playwright-report/
+test-results/
+
+.env
+.env.*
+!.env.example
+.dev.vars
+
+*.log
+.DS_Store
+
+# protótipo de referência e exportações de dados reais nunca entram no repositório
+prototipo/
+*.xlsx
+*_files/
