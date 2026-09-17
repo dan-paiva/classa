@@ -10,7 +10,14 @@ Funciona hoje: login, escolas, cursos e módulos, professores (habilitação e d
 
 Também: folha de professores e fechamento do mês, empresas B2B/B2B2C com cobrança, leads, fluxos em kanban (substituição, nível, reposição, admissão, cobrança, renovação, retenção, campanhas), perfis de acesso por nível e área, convites e áreas do professor e do aluno, auditoria de todas as alterações, painel de alertas e relatórios (financeiro, frequência, professores e matrículas) com exportação para planilha.
 
-Próximo: o importador do protótipo (uso local).
+Também importa o cadastro do protótipo em HTML na sua máquina:
+
+```bash
+pnpm import:prototipo -- caminho/do/portal.html --escola <link-da-escola> --simular   # mostra o que faria
+pnpm import:prototipo -- caminho/do/portal.html --escola <link-da-escola>             # importa de verdade
+```
+
+Traz horário de funcionamento, feriados, cursos e módulos, salas, professores, empresas, alunos e matrículas (com as aulas já usadas como ajuste inicial). Não traz aula, presença nem pagamento: no protótipo esses números são sorteados. Roda duas vezes sem duplicar, recusa banco que não seja o local (a menos que receba `--allow-remote`) e grava um relatório do que ficou pendente ao lado do arquivo lido. Nenhum dado do protótipo entra no repositório.
 
 Regras de negócio em [docs/DOMINIO.md](docs/DOMINIO.md); arquitetura em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 

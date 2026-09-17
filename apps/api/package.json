@@ -9,7 +9,8 @@
     "dev": "wrangler dev",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "import:prototipo": "tsx scripts/import-prototipo.ts"
   },
   "dependencies": {
     "@classa/db": "workspace:*",

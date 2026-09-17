@@ -15,7 +15,8 @@
     "db:generate": "pnpm --filter @classa/db generate",
     "db:migrate": "pnpm --filter @classa/db migrate",
     "db:migrate:prod": "pnpm --filter @classa/db migrate:prod",
-    "db:seed": "pnpm --filter @classa/api seed"
+    "db:seed": "pnpm --filter @classa/api seed",
+    "import:prototipo": "pnpm --filter @classa/api import:prototipo"
   },
   "devDependencies": {
     "@neon/config": "^1.5.0",
