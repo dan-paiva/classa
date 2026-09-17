@@ -6,7 +6,7 @@ Sistema de gestão escolar open source: alunos, matrículas, turmas, agenda de a
 
 ## Status
 
-Fase 0 (fundação): login com e-mail e senha e criação da escola funcionando. O plano completo está em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+Login, criação da escola e cadastro de cursos e módulos funcionando. Próximos: turmas, professores, alunos e matrículas. O plano completo está em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 
 ## Rodando localmente
 

@@ -47,7 +47,7 @@ describe("login e escola", () => {
     expect(auditoria[0]).toMatchObject({ entity: "tenant", action: "create" });
   });
 
-  it("recusa endereço de escola repetido", async () => {
+  it("recusa link de escola repetido", async () => {
     const cookie = await t.signUp("outra@demo.classa.dev");
     const res = await t.call("/api/tenants", {
       method: "POST",
@@ -57,7 +57,7 @@ describe("login e escola", () => {
     expect(res.status).toBe(409);
   });
 
-  it("valida nome e endereço", async () => {
+  it("valida nome e link", async () => {
     const cookie = await t.signUp("validacao@demo.classa.dev");
     const res = await t.call("/api/tenants", {
       method: "POST",

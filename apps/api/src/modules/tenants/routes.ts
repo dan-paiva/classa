@@ -49,7 +49,7 @@ export const tenantRoutes = new Hono<AppEnv>()
       return c.json({ tenant: { id: created.id, name: created.name, slug: created.slug } }, 201);
     } catch (err) {
       if (isUniqueViolation(err)) {
-        return c.json({ error: "conflict", issues: { slug: ["Esse endereço já está em uso"] } }, 409);
+        return c.json({ error: "conflict", issues: { slug: ["Esse link já está em uso por outra escola"] } }, 409);
       }
       throw err;
     }

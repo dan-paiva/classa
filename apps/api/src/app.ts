@@ -1,14 +1,19 @@
-import type { Database } from "@classa/db";
+import type { Database, MembershipRole } from "@classa/db";
 import { Hono } from "hono";
 import type { Auth } from "./auth.ts";
+import { courseRoutes } from "./modules/courses/routes.ts";
 import { tenantRoutes } from "./modules/tenants/routes.ts";
 
 export type SessionUser = { id: string; name: string; email: string };
+
+export type TenantContext = { id: string; name: string; slug: string; role: MembershipRole };
 
 export type AppVariables = {
   db: Database;
   auth: Auth;
   user: SessionUser | null;
+  /** Preenchido pelo middleware `requireTenant` nas rotas /api/t/:slug/*. */
+  tenant: TenantContext;
 };
 
 export type AppEnv = { Variables: AppVariables };
@@ -43,7 +48,8 @@ export function createApp(resolve: (env: unknown) => Services) {
 
   const routes = app
     .get("/health", (c) => c.json({ status: "ok", service: "classa-api" }))
-    .route("/", tenantRoutes);
+    .route("/", tenantRoutes)
+    .route("/t/:slug", courseRoutes);
 
   return routes;
 }

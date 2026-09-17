@@ -1,4 +1,5 @@
-import { boolean, index, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { uuidv7 } from "uuidv7";
 
 const id = () => uuid("id").primaryKey().$defaultFn(() => uuidv7());
@@ -116,6 +117,9 @@ export const membership = pgTable(
   (t) => [unique("membership_tenant_user_uq").on(t.tenantId, t.userId), index("membership_user_idx").on(t.userId)],
 );
 
+export const AUDIT_ACTIONS = ["create", "update", "deactivate", "reactivate", "delete"] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
 /** Histórico append-only de alterações. Nunca recebe UPDATE nem DELETE. */
 export const auditLog = pgTable(
   "audit_log",
@@ -128,11 +132,75 @@ export const auditLog = pgTable(
     actorId: text("actor_id"),
     entity: text("entity").notNull(),
     entityId: text("entity_id").notNull(),
-    action: text("action", { enum: ["create", "update", "deactivate", "delete"] }).notNull(),
+    action: text("action", { enum: AUDIT_ACTIONS }).notNull(),
     before: jsonb("before"),
     after: jsonb("after"),
     justification: text("justification"),
     createdAt: createdAt(),
   },
   (t) => [index("audit_log_tenant_created_idx").on(t.tenantId, t.createdAt)],
+);
+
+/* ---------------------------------------------------------------------------
+ * Acadêmico: cursos e módulos
+ * ------------------------------------------------------------------------- */
+
+export const COURSE_TYPES = ["grupo", "particular", "hibrido", "workshop", "turmas_dedicadas"] as const;
+export type CourseType = (typeof COURSE_TYPES)[number];
+
+export const MODALITIES = ["online", "presencial"] as const;
+export type Modality = (typeof MODALITIES)[number];
+
+export const course = pgTable(
+  "course",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    name: text("name").notNull(),
+    type: text("type", { enum: COURSE_TYPES }).notNull(),
+    color: text("color").notNull(),
+    /** Alunos por aula. */
+    capacity: integer("capacity").notNull(),
+    lessonMinutes: integer("lesson_minutes").notNull(),
+    /** Aulas incluídas no pacote de uma matrícula. */
+    packageLessons: integer("package_lessons").notNull(),
+    /** Horas de antecedência para o aluno cancelar sem perder a aula. */
+    cancelNoticeHours: integer("cancel_notice_hours").notNull(),
+    /** Valor de uma aula, em centavos. */
+    lessonPriceCents: integer("lesson_price_cents").notNull(),
+    modalities: text("modalities", { enum: MODALITIES }).array().notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deactivatedAt: tstz("deactivated_at"),
+  },
+  (t) => [
+    unique("course_tenant_name_uq").on(t.tenantId, t.name),
+    check("course_capacity_positive", sql`${t.capacity} > 0`),
+    check("course_lesson_minutes_positive", sql`${t.lessonMinutes} > 0`),
+    check("course_package_lessons_positive", sql`${t.packageLessons} > 0`),
+    check("course_cancel_notice_non_negative", sql`${t.cancelNoticeHours} >= 0`),
+    check("course_price_non_negative", sql`${t.lessonPriceCents} >= 0`),
+  ],
+);
+
+export const courseModule = pgTable(
+  "course_module",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => course.id),
+    name: text("name").notNull(),
+    color: text("color").notNull(),
+    position: integer("position").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deactivatedAt: tstz("deactivated_at"),
+  },
+  (t) => [unique("course_module_course_name_uq").on(t.courseId, t.name), index("course_module_course_idx").on(t.courseId)],
 );
