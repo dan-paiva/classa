@@ -48,3 +48,62 @@ export function FormError({ error }: { error: unknown }) {
     </p>
   );
 }
+
+export type Tone = "neutral" | "ok" | "warn" | "danger" | "info" | "muted";
+
+export function Badge({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {
+  return <span className={`badge badge-${tone}`}>{children}</span>;
+}
+
+export function Stat({ label, value, tone, hint }: { label: string; value: ReactNode; tone?: Tone; hint?: ReactNode }) {
+  return (
+    <div className={`stat${tone ? ` stat-${tone}` : ""}`}>
+      <span className="stat-label">{label}</span>
+      <strong className="stat-value">{value}</strong>
+      {hint && <span className="stat-hint">{hint}</span>}
+    </div>
+  );
+}
+
+export function PageHead({ title, subtitle, actions }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode }) {
+  return (
+    <header className="page-head">
+      <div>
+        <h1>{title}</h1>
+        {subtitle && <p className="muted">{subtitle}</p>}
+      </div>
+      {actions && <div className="actions">{actions}</div>}
+    </header>
+  );
+}
+
+export function Empty({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="empty">
+      <p>{children}</p>
+      {action}
+    </div>
+  );
+}
+
+export function Loading() {
+  return <p className="muted">Carregando…</p>;
+}
+
+export function LoadError({ error }: { error: unknown }) {
+  return (
+    <p className="error" role="alert">
+      {(error as Error)?.message || "Não foi possível carregar."}
+    </p>
+  );
+}
+
+/** Mensagem de erro da API para ações sem formulário (botões). */
+export function ActionError({ error }: { error: unknown }) {
+  if (!error) return null;
+  return (
+    <p className="error" role="alert">
+      {(error as Error).message || "Não foi possível concluir a ação."}
+    </p>
+  );
+}
