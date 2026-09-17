@@ -5,11 +5,11 @@ import { createAuth } from "../src/auth.ts";
 export const BASE_URL = "http://localhost:8787";
 
 /** App completo sobre um Postgres em memória, com as migrations reais aplicadas. */
-export async function createTestApp() {
+export async function createTestApp(options: { allowedSignupEmails?: string[] } = {}) {
   const database = await createTestDb();
   // segredo aleatório por execução: nada fixo no repositório
   const secret = `${crypto.randomUUID()}${crypto.randomUUID()}`;
-  const auth = createAuth({ db: database, secret, baseURL: BASE_URL });
+  const auth = createAuth({ db: database, secret, baseURL: BASE_URL, allowedSignupEmails: options.allowedSignupEmails });
   const app = createApp(() => ({ db: database, auth }));
 
   const call = (path: string, init: RequestInit & { cookie?: string } = {}) => {
