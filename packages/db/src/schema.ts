@@ -343,6 +343,8 @@ export const student = pgTable(
     status: text("status", { enum: STUDENT_STATUSES }).notNull().default("ativo"),
     /** Situação antes de desativar ou cancelar, para reativar voltando a ela. */
     previousStatus: text("previous_status", { enum: STUDENT_STATUSES }),
+    /** Empresa que oferece o curso (B2B ou B2B2C). Sem empresa = B2C. */
+    companyId: uuid("company_id"),
     availability: availability(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -732,4 +734,80 @@ export const payrollLine = pgTable(
     paidBy: text("paid_by"),
   },
   (t) => [unique("payroll_line_period_teacher_uq").on(t.periodId, t.teacherId)],
+);
+
+/* ---------------------------------------------------------------------------
+ * Empresas: contas B2B (empresa paga) e B2B2C (benefício dividido)
+ * ------------------------------------------------------------------------- */
+
+export const COMPANY_MODELS = ["b2b", "b2b2c"] as const;
+export type CompanyModel = (typeof COMPANY_MODELS)[number];
+
+export const company = pgTable(
+  "company",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    name: text("name").notNull(),
+    /** Só dígitos. */
+    cnpj: text("cnpj"),
+    segment: text("segment"),
+    model: text("model", { enum: COMPANY_MODELS }).notNull(),
+    /** Gerente da conta (usuário). */
+    managerUserId: text("manager_user_id"),
+    hrName: text("hr_name"),
+    hrEmail: text("hr_email"),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on").notNull(),
+    /** Colaboradores que estudam ao mesmo tempo. */
+    licenses: integer("licenses").notNull(),
+    contractedLessons: integer("contracted_lessons").notNull().default(0),
+    licensePriceCents: integer("license_price_cents").notNull(),
+    /** B2B2C: parte que a empresa paga (B2B = 100). */
+    subsidyPercent: integer("subsidy_percent").notNull().default(100),
+    /** B2B2C: desconto sobre a parte do colaborador (B2B = 0). */
+    discountPercent: integer("discount_percent").notNull().default(0),
+    autoRenew: boolean("auto_renew").notNull().default(true),
+    /** Cursos que os colaboradores podem fazer; null = todos. */
+    allowedCourseIds: uuid("allowed_course_ids").array(),
+    lastReportSentAt: tstz("last_report_sent_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deactivatedAt: tstz("deactivated_at"),
+  },
+  (t) => [
+    unique("company_tenant_name_uq").on(t.tenantId, t.name),
+    uniqueIndex("company_tenant_cnpj_uq").on(t.tenantId, t.cnpj).where(sql`${t.cnpj} is not null`),
+    check("company_period", sql`${t.endsOn} > ${t.startsOn}`),
+    check("company_licenses_positive", sql`${t.licenses} >= 1`),
+    check("company_subsidy_range", sql`${t.subsidyPercent} between 0 and 100`),
+    check("company_discount_range", sql`${t.discountPercent} between 0 and 100`),
+  ],
+);
+
+/** Cobrança mensal da parte da empresa. Uma por empresa e mês. */
+export const companyCharge = pgTable(
+  "company_charge",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => company.id),
+    /** "AAAA-MM" */
+    month: text("month").notNull(),
+    /** Base de cálculo: licenças (B2B) ou colaboradores ativos (B2B2C). */
+    billedLicenses: integer("billed_licenses").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    dueDate: date("due_date").notNull(),
+    paidOn: date("paid_on"),
+    method: text("method", { enum: PAYMENT_METHODS }),
+    cancelledAt: tstz("cancelled_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [unique("company_charge_month_uq").on(t.companyId, t.month)],
 );

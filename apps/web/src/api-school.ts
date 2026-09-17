@@ -35,10 +35,52 @@ export type StudentRow = {
   previousStatus: StudentStatus | null;
   availability: number[];
   person: Person;
+  companyName: string | null;
   activeEnrollments: number;
   balance: number;
   overdueInstallments: number;
 };
+
+export type CompanyModel = "b2b" | "b2b2c";
+export const COMPANY_MODEL_LABELS: Record<CompanyModel, string> = { b2b: "B2B · empresa paga", b2b2c: "B2B2C · benefício dividido" };
+export type CompanyAlert = { tone: "danger" | "warn" | "muted"; message: string };
+export type Company = {
+  id: string;
+  name: string;
+  cnpj: string | null;
+  segment: string | null;
+  model: CompanyModel;
+  hrName: string | null;
+  hrEmail: string | null;
+  startsOn: string;
+  endsOn: string;
+  licenses: number;
+  contractedLessons: number;
+  licensePriceCents: number;
+  subsidyPercent: number;
+  discountPercent: number;
+  autoRenew: boolean;
+  allowedCourseIds: string[] | null;
+  lastReportSentAt: string | null;
+  linked: number;
+  licensesInUse: number;
+  consumed: number;
+  attendancePercent: number | null;
+  delinquent: number;
+  status: "ativo" | "renovacao" | "encerrado";
+  daysLeft: number;
+  monthlyCompanyCents: number;
+  monthlyCollaboratorCents: number;
+  alerts: CompanyAlert[];
+};
+export type CompanyInput = Pick<Company, "name" | "model" | "startsOn" | "endsOn" | "licenses" | "contractedLessons" | "licensePriceCents" | "subsidyPercent" | "discountPercent" | "autoRenew"> & {
+  cnpj?: string | null;
+  segment?: string | null;
+  hrName?: string | null;
+  hrEmail?: string | null;
+  allowedCourseIds?: string[] | null;
+};
+export type CompanyCharge = { id: string; month: string; billedLicenses: number; amountCents: number; dueDate: string; paidOn: string | null; method: PaymentMethod | null };
 
 export type Room = { id: string; name: string; kind: "virtual" | "presencial" | "auditorio"; link: string | null; capacity: number | null; deactivatedAt: string | null };
 export const ROOM_KIND_LABELS = { virtual: "Virtual", presencial: "Presencial", auditorio: "Auditório" } as const;
@@ -289,7 +331,7 @@ export const school = {
 
   students: (slug: string, filters: { q?: string; status?: string } = {}) => request<{ students: StudentRow[] }>(`${t(slug)}/students${qs(filters)}`),
   student: (slug: string, id: string) =>
-    request<{ student: { id: string; status: StudentStatus; previousStatus: StudentStatus | null; availability: number[]; person: Person }; enrollments: Enrollment[]; installments: Installment[]; lessons: Lesson[] }>(
+    request<{ student: { id: string; status: StudentStatus; previousStatus: StudentStatus | null; availability: number[]; person: Person; company: { id: string; name: string; model: CompanyModel } | null }; enrollments: Enrollment[]; installments: Installment[]; lessons: Lesson[] }>(
       `${t(slug)}/students/${id}`,
     ),
   createStudent: (slug: string, input: { person: PersonInput; availability?: number[] }) => request<{ student: { id: string } }>(`${t(slug)}/students`, post(input)),
@@ -340,6 +382,18 @@ export const school = {
   registerPayment: (slug: string, installmentId: string, input: { method: PaymentMethod; amountCents?: number; paidOn?: string }) =>
     request(`${t(slug)}/installments/${installmentId}/payments`, post(input)),
   reversePayment: (slug: string, paymentId: string, justification: string) => request(`${t(slug)}/payments/${paymentId}/reverse`, post({ justification })),
+
+  companies: (slug: string) => request<{ companies: Company[] }>(`${t(slug)}/companies`),
+  company: (slug: string, id: string) =>
+    request<{ company: Company; students: { id: string; status: StudentStatus; name: string; email: string | null; activeEnrollments: number; used: number }[]; charges: CompanyCharge[] }>(`${t(slug)}/companies/${id}`),
+  createCompany: (slug: string, input: CompanyInput) => request<{ company: Company }>(`${t(slug)}/companies`, post(input)),
+  updateCompany: (slug: string, id: string, input: CompanyInput) => request<{ company: Company }>(`${t(slug)}/companies/${id}`, { method: "PUT", body: JSON.stringify(input) }),
+  renewCompany: (slug: string, id: string, input: { endsOn: string; licenses?: number; addLessons?: number }) => request(`${t(slug)}/companies/${id}/renew`, post(input)),
+  linkStudent: (slug: string, id: string, studentId: string) => request<{ warning: string | null }>(`${t(slug)}/companies/${id}/students`, post({ studentId })),
+  unlinkStudent: (slug: string, id: string, studentId: string) => request(`${t(slug)}/companies/${id}/students/${studentId}`, { method: "DELETE" }),
+  generateCharge: (slug: string, id: string, month: string) => request(`${t(slug)}/companies/${id}/charges`, post({ month })),
+  payCharge: (slug: string, chargeId: string, method: PaymentMethod) => request(`${t(slug)}/company-charges/${chargeId}/pay`, post({ method })),
+  recordReport: (slug: string, id: string) => request(`${t(slug)}/companies/${id}/report`, post()),
 
   payroll: (slug: string, month: string) => request<{ payroll: Payroll; periods: PayrollPeriod[] }>(`${t(slug)}/payroll?month=${month}`),
   closeMonth: (slug: string, month: string) => request(`${t(slug)}/payroll/${month}/close`, post()),

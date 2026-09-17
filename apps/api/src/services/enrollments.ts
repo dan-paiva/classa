@@ -2,6 +2,7 @@ import {
   and,
   asc,
   classGroup,
+  company,
   course,
   courseModule,
   creditEntry,
@@ -18,7 +19,7 @@ import {
   type CreditKind,
   type Modality,
 } from "@classa/db";
-import { addDays, dateInZone } from "@classa/domain";
+import { addDays, collaboratorDiscountCents, dateInZone } from "@classa/domain";
 import { audit } from "../http/audit.ts";
 import { invalid, notFound, unprocessable } from "../http/errors.ts";
 import type { Db, ServiceContext, Tx } from "./context.ts";
@@ -89,6 +90,20 @@ export async function createEnrollment(
   if (!Number.isInteger(packageLessons) || packageLessons < 1) throw invalid("packageLessons", "Pacote precisa ter ao menos 1 aula");
   const modality = input.modality ?? cg.modality;
   if (!c.modalities.includes(modality)) throw invalid("modality", "Modalidade não aceita por este curso");
+  // aluno de empresa: cursos liberados e quem paga
+  let contractInput = input.contract;
+  if (s.companyId) {
+    const [co] = await ctx.db.select().from(company).where(eq(company.id, s.companyId));
+    if (co) {
+      if (co.allowedCourseIds && !co.allowedCourseIds.includes(c.id)) {
+        throw unprocessable(`O curso não está liberado no contrato da empresa ${co.name}.`);
+      }
+      if (co.model === "b2b") contractInput = false;
+      else if (contractInput !== false && contractInput?.discountCents === undefined) {
+        contractInput = { ...contractInput, discountCents: collaboratorDiscountCents(packageLessons * c.lessonPriceCents, co.subsidyPercent, co.discountPercent) };
+      }
+    }
+  }
   const startsOn = input.startsOn ?? today(ctx);
   const endsOn = input.endsOn ?? (addDays(startsOn, 365) < cg.endsOn ? addDays(startsOn, 365) : cg.endsOn);
   if (endsOn < startsOn) throw invalid("endsOn", "O fim do contrato precisa ser depois do início");
@@ -104,7 +119,7 @@ export async function createEnrollment(
     await tx.insert(creditEntry).values({ tenantId: ctx.tenantId, enrollmentId: e!.id, kind: "contratacao", amount: packageLessons, actorId: ctx.actorId });
     const lessons = await enrollInLessons(tx, ctx, e!);
     await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "enrollment", entityId: e!.id, action: "create", after: { ...e, lessons } });
-    if (input.contract !== false) await issueContractTx(tx, ctx, e!.id, input.contract ?? {});
+    if (contractInput !== false) await issueContractTx(tx, ctx, e!.id, contractInput ?? {});
     return e!;
   });
 }

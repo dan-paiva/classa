@@ -24,8 +24,9 @@ import {
   type PaymentMethod,
 } from "@classa/db";
 import { createDb } from "@classa/db";
-import { addDays, cpfFromBase, dateInZone, slotKey } from "@classa/domain";
+import { addDays, cnpjFromBase, cpfFromBase, dateInZone, slotKey } from "@classa/domain";
 import { createAuth } from "../src/auth.ts";
+import { createCompany, generateCharge, linkStudent, payCharge } from "../src/services/companies.ts";
 import type { ServiceContext } from "../src/services/context.ts";
 import { createEnrollment, listEnrollments } from "../src/services/enrollments.ts";
 import { listInstallments, refreshDelinquency, registerPayment, reversePayment } from "../src/services/finance.ts";
@@ -86,8 +87,8 @@ async function resetDemo(db: Database) {
   const id = t.id;
   // ordem inversa das dependências
   for (const table of [
-    "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
-    "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "person",
+    "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
+    "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "person",
     "room", "course_module", "course", "audit_log", "membership",
   ]) {
     await db.execute(sql.raw(`delete from ${table} where tenant_id = '${id}'`));
@@ -257,6 +258,26 @@ async function main() {
     }
     log(`${students.length} alunos`);
 
+    /* ----------------------------------------------------------------- empresas */
+    const vetor = await createCompany(nowCtx, {
+      name: "Vetor Engenharia", cnpj: cnpjFromBase("481203550001"), segment: "Engenharia", model: "b2b",
+      hrName: "Equipe de Pessoas", hrEmail: "pessoas@vetor.exemplo.com", startsOn: addDays(today, -58), endsOn: addDays(today, 25),
+      licenses: 5, contractedLessons: 120, licensePriceCents: 42000, autoRenew: false,
+    });
+    const bemEstar = await createCompany(nowCtx, {
+      name: "Rede Bem Estar", cnpj: cnpjFromBase("732118040001"), segment: "Saúde", model: "b2b2c",
+      hrName: "Benefícios", hrEmail: "beneficios@bemestar.exemplo.com", startsOn: addDays(today, -120), endsOn: addDays(today, 245),
+      licenses: 12, contractedLessons: 480, licensePriceCents: 36000, subsidyPercent: 50, discountPercent: 15,
+    });
+    const alfa = await createCompany(nowCtx, {
+      name: "Alfa Logística", cnpj: cnpjFromBase("905531770001"), segment: "Logística", model: "b2b",
+      hrName: "Treinamento", startsOn: addDays(today, -60), endsOn: addDays(today, 300), licenses: 24, contractedLessons: 600, licensePriceCents: 25000,
+      allowedCourseIds: [corporativo.id],
+    });
+    for (const st of students.slice(40, 46)) await linkStudent(nowCtx, vetor.id, st.id);
+    for (const st of students.slice(46, 52)) await linkStudent(nowCtx, bemEstar.id, st.id);
+    log("3 empresas (B2B perto de vencer e acima das licenças, B2B2C com subsídio, B2B de turmas dedicadas)");
+
     /* -------------------------------------------------------- aulas particulares */
     const particularSpecs: [number, [number, string][], "online" | "presencial", keyof typeof rooms][] = [
       [6, [[1, "15:00"], [3, "15:00"]], "online", "v1"],
@@ -291,8 +312,12 @@ async function main() {
     const methods: PaymentMethod[] = ["pix", "pix", "pix", "cartao_credito", "cartao_credito", "boleto", "transferencia", "cartao_debito", "dinheiro"];
     let enrollments = 0;
     const enroll = async (studentId: string, classGroupId: string, opts: { startsOn: string; packageLessons?: number; contract?: false | { discountCents?: number; installments?: number } }) => {
-      await createEnrollment(at(base, localMidnight(opts.startsOn)), { studentId, classGroupId, ...opts });
-      enrollments++;
+      try {
+        await createEnrollment(at(base, localMidnight(opts.startsOn)), { studentId, classGroupId, ...opts });
+        enrollments++;
+      } catch (err) {
+        if ((err as { status?: number }).status !== 422) throw err; // curso fora do contrato da empresa: segue
+      }
     };
 
     for (const p of particulares) {
@@ -313,7 +338,18 @@ async function main() {
         });
       }
     }
-    log(`${enrollments} matrículas com contrato e parcelas (turmas corporativas sem cobrança individual)`);
+    log(`${enrollments} matrículas com contrato e parcelas (turmas corporativas e alunos B2B sem cobrança individual)`);
+
+    // colaboradores das turmas dedicadas ficam ligados à empresa cliente
+    const corporateGroups = new Set(groups.filter((g) => g.courseId === corporativo.id).map((g) => g.id));
+    const corporateStudents = (await listEnrollments(nowCtx, { activeOnly: true })).filter((e) => corporateGroups.has(e.classGroupId));
+    for (const e of corporateStudents) {
+      try {
+        await linkStudent(nowCtx, alfa.id, e.studentId);
+      } catch {
+        // já vinculado a outra empresa
+      }
+    }
 
     /* --------------------------------------------- simulação das aulas passadas */
     const past = await db
@@ -424,6 +460,19 @@ async function main() {
       await reversePayment(nowCtx, id, "Pagamento contestado no cartão");
     }
     log(`${paid} parcelas pagas, ${partial} pagas pela metade, ${open} em aberto, 2 estornos`);
+
+    /* ------------------------------------------------ cobranças das empresas */
+    for (const co of [vetor, bemEstar, alfa]) {
+      for (const month of [lastMonth, today.slice(0, 7)]) {
+        try {
+          const ch = await generateCharge(nowCtx, co.id, month);
+          if (month === lastMonth && co.id !== bemEstar.id) await payCharge(nowCtx, ch.id, { method: "boleto", paidOn: `${month}-12` });
+        } catch {
+          // mês fora da vigência
+        }
+      }
+    }
+    log("cobranças das empresas do mês anterior e do atual (Rede Bem Estar com o mês anterior em aberto)");
 
     /* ------------------------------------------------------ situações variadas */
     const act = students.slice(30);

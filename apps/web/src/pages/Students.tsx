@@ -72,7 +72,10 @@ export function Students() {
                     <Link to="/e/$slug/alunos/$studentId" params={{ slug, studentId: s.id }} className="row-link">
                       {s.person.name}
                     </Link>
-                    <div className="muted small">{formatCpf(s.person.cpf)}</div>
+                    <div className="muted small">
+                      {formatCpf(s.person.cpf)}
+                      {s.companyName && ` · ${s.companyName}`}
+                    </div>
                   </td>
                   <td className="small">
                     {s.person.email ?? "—"}
@@ -196,7 +199,16 @@ export function StudentDetail() {
         title={s.person.name}
         subtitle={
           <>
-            <StudentStatusBadge status={s.status} /> {s.person.email ?? "sem e-mail"} · {formatPhone(s.person.phone)} · CPF {formatCpf(s.person.cpf)}
+            <StudentStatusBadge status={s.status} />{" "}
+            {s.company && (
+              <>
+                <Link to="/e/$slug/empresas/$companyId" params={{ slug, companyId: s.company.id }}>
+                  {s.company.name}
+                </Link>{" "}
+                ({s.company.model.toUpperCase()}) ·{" "}
+              </>
+            )}
+            {s.person.email ?? "sem e-mail"} · {formatPhone(s.person.phone)} · CPF {formatCpf(s.person.cpf)}
           </>
         }
         actions={

@@ -170,3 +170,33 @@ describe("folha", () => {
     expect(nextMonthStart("2026-12")).toBe("2027-01-01");
   });
 });
+
+import { cnpjFromBase, collaboratorDiscountCents, companyAlerts, companyContractStatus, companyMonthlyCharge, isValidCnpj } from "./company.ts";
+
+describe("empresas", () => {
+  it("CNPJ", () => {
+    const cnpj = cnpjFromBase("112223330001");
+    expect(isValidCnpj(cnpj)).toBe(true);
+    expect(cnpj).toBe("11222333000181");
+    expect(isValidCnpj("11.222.333/0001-80")).toBe(false);
+  });
+
+  it("situação do contrato", () => {
+    expect(companyContractStatus("2026-12-31", "2026-09-17").status).toBe("ativo");
+    expect(companyContractStatus("2026-10-17", "2026-09-17")).toEqual({ status: "renovacao", daysLeft: 30 });
+    expect(companyContractStatus("2026-09-10", "2026-09-17")).toEqual({ status: "encerrado", daysLeft: -7 });
+  });
+
+  it("cobrança da empresa e parte do colaborador", () => {
+    expect(companyMonthlyCharge({ model: "b2b", licenses: 5, activeStudents: 2, licensePriceCents: 40000, subsidyPercent: 100 })).toEqual({ billedLicenses: 5, amountCents: 200000 });
+    expect(companyMonthlyCharge({ model: "b2b2c", licenses: 10, activeStudents: 4, licensePriceCents: 30000, subsidyPercent: 50 })).toEqual({ billedLicenses: 4, amountCents: 60000 });
+    // bruto 1000: empresa 50%, colaborador paga 500 com 20% de desconto = 400 → desconto no contrato 600
+    expect(collaboratorDiscountCents(1000, 50, 20)).toBe(600);
+    expect(collaboratorDiscountCents(1000, 100, 0)).toBe(1000);
+  });
+
+  it("alertas da conta", () => {
+    const a = companyAlerts({ status: "renovacao", daysLeft: 20, autoRenew: false, licensesInUse: 6, licenses: 5, consumed: 90, contractedLessons: 100, attendancePercent: 70, delinquentStudents: 1 });
+    expect(a.map((x) => x.tone)).toEqual(["danger", "danger", "warn", "warn", "danger"]);
+  });
+});

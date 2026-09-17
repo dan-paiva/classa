@@ -1,4 +1,4 @@
-import { and, eq, lessonStudent, person, ROOM_KINDS, sql, student, STUDENT_STATUSES } from "@classa/db";
+import { and, company, eq, lessonStudent, person, ROOM_KINDS, sql, student, STUDENT_STATUSES } from "@classa/db";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
@@ -102,6 +102,7 @@ export const peopleRoutes = new Hono<AppEnv>()
       .select({
         student,
         person,
+        companyName: sql<string | null>`(select c.name from company c where c.id = ${student.companyId})`,
         activeEnrollments: sql<number>`(select count(*)::int from enrollment e where e.student_id = ${student.id} and e.ended_at is null)`,
         balance: sql<number>`(select coalesce(sum(ce.amount), 0)::int from credit_entry ce join enrollment e on e.id = ce.enrollment_id where e.student_id = ${student.id} and e.ended_at is null)`,
         overdue: sql<number>`(select count(*)::int from installment i join contract k on k.id = i.contract_id join enrollment e on e.id = k.enrollment_id
@@ -119,7 +120,7 @@ export const peopleRoutes = new Hono<AppEnv>()
       )
       .orderBy(person.name);
     return c.json({
-      students: rows.map((r) => ({ ...r.student, person: r.person, activeEnrollments: r.activeEnrollments, balance: r.balance, overdueInstallments: r.overdue })),
+      students: rows.map((r) => ({ ...r.student, person: r.person, companyName: r.companyName, activeEnrollments: r.activeEnrollments, balance: r.balance, overdueInstallments: r.overdue })),
     });
   })
 
@@ -129,6 +130,7 @@ export const peopleRoutes = new Hono<AppEnv>()
     if (!id.success) throw invalid("id", "Aluno não encontrado");
     const s = await getStudentRow(ctx.db, ctx, id.data);
     const [p] = await ctx.db.select().from(person).where(eq(person.id, s.personId));
+    const [co] = s.companyId ? await ctx.db.select({ id: company.id, name: company.name, model: company.model }).from(company).where(eq(company.id, s.companyId)) : [];
     const enrollments = await listEnrollments(ctx, { studentId: s.id });
     const installments = await listInstallments(ctx, { studentId: s.id });
     const lessons = await listLessons(ctx, { from: days(-30), to: days(21), studentId: s.id });
@@ -138,7 +140,7 @@ export const peopleRoutes = new Hono<AppEnv>()
       .where(eq(lessonStudent.studentId, s.id));
     const byLesson = new Map(attendance.map((a) => [a.lessonId, a]));
     return c.json({
-      student: { ...s, person: p },
+      student: { ...s, person: p, company: co ?? null },
       enrollments,
       installments,
       lessons: lessons.map((l) => ({ ...l, myStatus: byLesson.get(l.id)?.status ?? null, cancelledInTime: byLesson.get(l.id)?.cancelledInTime ?? null })),
