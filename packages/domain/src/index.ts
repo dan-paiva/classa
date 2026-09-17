@@ -5,3 +5,4 @@ export * from "./holidays.ts";
 export * from "./lessons.ts";
 export * from "./time.ts";
 export * from "./types.ts";
+export * from "./finance.ts";

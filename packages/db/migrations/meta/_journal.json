@@ -29,6 +29,13 @@
       "when": 1789656383428,
       "tag": "0003_lesson_no_overlap",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789656801421,
+      "tag": "0004_low_joseph",
+      "breakpoints": true
     }
   ]
 }

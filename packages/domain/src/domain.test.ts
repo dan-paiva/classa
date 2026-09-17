@@ -120,3 +120,26 @@ describe("créditos", () => {
     expect(cancelledInTime(new Date("2026-09-21T15:00:01Z"), aula, 6)).toBe(false);
   });
 });
+
+import { buildInstallments, daysLate, installmentStatus } from "./finance.ts";
+
+describe("parcelas", () => {
+  it("divide em centavos com a última absorvendo o arredondamento", () => {
+    const p = buildInstallments(100000, 3, 10, "2026-09-05");
+    expect(p.map((x) => x.amountCents)).toEqual([33333, 33333, 33334]);
+    expect(p.map((x) => x.dueDate)).toEqual(["2026-09-10", "2026-10-10", "2026-11-10"]);
+  });
+
+  it("começa no mês seguinte se o dia de vencimento já passou e vira o ano", () => {
+    const p = buildInstallments(60000, 3, 10, "2026-11-20");
+    expect(p.map((x) => x.dueDate)).toEqual(["2026-12-10", "2027-01-10", "2027-02-10"]);
+  });
+
+  it("vence no dia seguinte ao vencimento", () => {
+    const i = { dueDate: "2026-09-10", amountCents: 100, paidCents: 0, cancelledAt: null };
+    expect(installmentStatus(i, "2026-09-10")).toBe("a_vencer");
+    expect(installmentStatus(i, "2026-09-11")).toBe("vencida");
+    expect(installmentStatus({ ...i, paidCents: 100 }, "2026-09-30")).toBe("paga");
+    expect(daysLate("2026-09-10", "2026-09-26")).toBe(16);
+  });
+});
