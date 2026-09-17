@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, createRouter, Outlet } from "@tanstack/react-router";
+import { createRootRoute, createRoute, createRouter, Outlet, useRouterState } from "@tanstack/react-router";
 import { authClient } from "./auth-client.ts";
 import { Agenda } from "./pages/Agenda.tsx";
 import { ClassGroupDetail } from "./pages/ClassGroupDetail.tsx";
@@ -9,7 +9,9 @@ import { Courses } from "./pages/Courses.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
 import { Finance } from "./pages/Finance.tsx";
 import { Flows } from "./pages/Flows.tsx";
+import { Invitation } from "./pages/Invitation.tsx";
 import { Leads } from "./pages/Leads.tsx";
+import { MyArea } from "./pages/MyArea.tsx";
 import { LessonDetail } from "./pages/LessonDetail.tsx";
 import { Login } from "./pages/Login.tsx";
 import { Payroll } from "./pages/Payroll.tsx";
@@ -21,12 +23,15 @@ import { TeacherDetail, TeacherForm, Teachers } from "./pages/Teachers.tsx";
 
 function Root() {
   const session = authClient.useSession();
+  const path = useRouterState({ select: (s) => s.location.pathname });
+  if (path.startsWith("/convite/")) return <Outlet />; // o aceite de convite funciona sem estar logado
   if (session.isPending) return <div className="auth">Carregando…</div>;
   if (!session.data) return <Login />;
   return <Outlet />;
 }
 
 const rootRoute = createRootRoute({ component: Root });
+const invitationRoute = createRoute({ getParentRoute: () => rootRoute, path: "/convite/$token", component: Invitation });
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Schools });
 const schoolRoute = createRoute({ getParentRoute: () => rootRoute, path: "/e/$slug", component: SchoolLayout });
 
@@ -49,10 +54,12 @@ const companiesRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/
 const companyRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/empresas/$companyId", component: CompanyDetail });
 const leadsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/leads", component: Leads });
 const flowsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/acoes", component: Flows });
+const myAreaRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/minha-area", component: MyArea });
 const settingsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/configuracoes", component: Settings });
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
+  invitationRoute,
   schoolRoute.addChildren([
     dashboardRoute,
     agendaRoute,
@@ -69,6 +76,7 @@ const routeTree = rootRoute.addChildren([
     courseRoute,
     financeRoute,
     payrollRoute,
+    myAreaRoute,
     leadsRoute,
     flowsRoute,
     companiesRoute,

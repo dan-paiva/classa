@@ -3,6 +3,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { uuidv7 } from "uuidv7";
+import { hasOpenInvitation } from "./services/users.ts";
 
 export type AuthConfig = {
   db: Database;
@@ -41,7 +42,8 @@ export function createAuth({ db, secret, baseURL, trustedOrigins = [], allowedSi
       user: {
         create: {
           before: async (user) => {
-            if (allowed.size > 0 && !allowed.has(user.email.toLowerCase())) {
+            // cadastro liberado pela lista de e-mails (primeira conta da escola) ou por convite aberto
+            if (allowed.size > 0 && !allowed.has(user.email.toLowerCase()) && !(await hasOpenInvitation(db, user.email))) {
               throw new APIError("FORBIDDEN", { message: "O cadastro não está liberado para este e-mail." });
             }
           },

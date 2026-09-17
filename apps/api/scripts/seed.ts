@@ -88,9 +88,9 @@ async function resetDemo(db: Database) {
   const id = t.id;
   // ordem inversa das dependências
   for (const table of [
-    "workflow_transition", "workflow_card", "lead", "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
+    "membership", "invitation", "workflow_transition", "workflow_card", "lead", "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
     "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "person",
-    "room", "course_module", "course", "audit_log", "membership",
+    "room", "course_module", "course", "audit_log",
   ]) {
     await db.execute(sql.raw(`delete from ${table} where tenant_id = '${id}'`));
   }
@@ -554,6 +554,32 @@ async function main() {
       await createCard(nowCtx, "campanha", { name: "Indique um amigo" });
     });
     log("cartões em todos os fluxos (substituição, nível, reposição, admissão, cobrança, retenção, campanhas)");
+
+    /* --------------------------------------------- contas de cada perfil (demo) */
+    const account = async (email: string, name: string) => {
+      let [u] = await db.select().from(authUser).where(eq(authUser.email, email));
+      if (!u) {
+        await auth.api.signUpEmail({ body: { email, password: "classa-demo-123", name } });
+        [u] = await db.select().from(authUser).where(eq(authUser.email, email));
+      }
+      return u!;
+    };
+    const { person: personTable, student: studentTable, teacher: teacherTable } = await import("@classa/db");
+    const [teacherPerson] = await db.select({ personId: teacherTable.personId }).from(teacherTable).where(eq(teacherTable.id, teachers[0]!.id));
+    const privateStudent = particulares[0]!.student;
+    const [studentPerson] = await db.select({ personId: studentTable.personId }).from(studentTable).where(eq(studentTable.id, privateStudent.id));
+    const demoProfiles = [
+      { email: "coordenacao@demo.classa.dev", name: "Coordenação Demo", profileType: "colaborador" as const, level: 2, areas: { ped: "total" as const, aca: "restrito" as const }, personId: null },
+      { email: "financeiro@demo.classa.dev", name: "Financeiro Demo", profileType: "colaborador" as const, level: 3, areas: { fin: "total" as const, aca: "restrito" as const }, personId: null },
+      { email: "professor@demo.classa.dev", name: teachers[0]!.name, profileType: "prestador" as const, level: 4, areas: {}, personId: teacherPerson!.personId },
+      { email: "aluno@demo.classa.dev", name: privateStudent.name, profileType: "aluno" as const, level: 5, areas: {}, personId: studentPerson!.personId },
+    ];
+    for (const prof of demoProfiles) {
+      const u = await account(prof.email, prof.name);
+      await db.insert(membership).values({ tenantId: school!.id, userId: u.id, role: "admin", profileType: prof.profileType, level: prof.level, areas: prof.areas, personId: prof.personId });
+    }
+    void personTable;
+    log("contas de demonstração: coordenacao@, financeiro@, professor@ e aluno@demo.classa.dev (senha classa-demo-123)");
 
     const active = await listEnrollments(nowCtx, { activeOnly: true });
     const high = active.filter((e) => e.usage >= 0.8).length;

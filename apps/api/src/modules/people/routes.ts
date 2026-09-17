@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
 import { invalid } from "../../http/errors.ts";
 import { isoDate, uuid } from "../../http/query.ts";
-import { requireAdmin, requireTenant } from "../../http/require-tenant.ts";
+import {authorize, requireAdmin} from "../../http/require-tenant.ts";
 import { parseBody } from "../../http/validation.ts";
 import { contextFrom } from "../../services/context.ts";
 import { listEnrollments } from "../../services/enrollments.ts";
@@ -38,12 +38,11 @@ const teacherCourses = z.array(z.object({ courseId: uuid, moduleIds: z.array(uui
 const days = (n: number) => new Date(Date.now() + n * 86400_000);
 
 export const peopleRoutes = new Hono<AppEnv>()
-  .use("*", requireTenant)
 
   /* ---------------------------------------------------------------- professores */
-  .get("/teachers", async (c) => c.json({ teachers: await listTeachers(contextFrom(c)) }))
+  .get("/teachers", authorize("professores", "ver"), async (c) => c.json({ teachers: await listTeachers(contextFrom(c)) }))
 
-  .get("/teachers/:id", async (c) => {
+  .get("/teachers/:id", authorize("professores", "ver"), async (c) => {
     const ctx = contextFrom(c);
     const id = uuid.safeParse(c.req.param("id"));
     if (!id.success) throw invalid("id", "Professor não encontrado");
@@ -54,7 +53,7 @@ export const peopleRoutes = new Hono<AppEnv>()
     return c.json({ teacher, classGroups, lessons });
   })
 
-  .post("/teachers", requireAdmin, async (c) => {
+  .post("/teachers", authorize("professores", "editar"), async (c) => {
     const { data, error } = await parseBody(
       c,
       z.object({
@@ -70,7 +69,7 @@ export const peopleRoutes = new Hono<AppEnv>()
     return c.json({ teacher: await createTeacher(contextFrom(c), data) }, 201);
   })
 
-  .patch("/teachers/:id", requireAdmin, async (c) => {
+  .patch("/teachers/:id", authorize("professores", "editar"), async (c) => {
     const { data, error } = await parseBody(
       c,
       z.object({
@@ -89,12 +88,12 @@ export const peopleRoutes = new Hono<AppEnv>()
     return c.json({ teacher: await updateTeacher(ctx, t.id, rest) });
   })
 
-  .post("/teachers/:id/:action{deactivate|reactivate}", requireAdmin, async (c) =>
+  .post("/teachers/:id/:action{deactivate|reactivate}", authorize("professores", "inativar"), async (c) =>
     c.json({ teacher: await setTeacherActive(contextFrom(c), c.req.param("id"), c.req.param("action") === "reactivate") }),
   )
 
   /* --------------------------------------------------------------------- alunos */
-  .get("/students", async (c) => {
+  .get("/students", authorize("alunos", "ver"), async (c) => {
     const ctx = contextFrom(c);
     const q = c.req.query("q")?.trim();
     const status = c.req.query("status");
@@ -124,7 +123,7 @@ export const peopleRoutes = new Hono<AppEnv>()
     });
   })
 
-  .get("/students/:id", async (c) => {
+  .get("/students/:id", authorize("alunos", "ver"), async (c) => {
     const ctx = contextFrom(c);
     const id = uuid.safeParse(c.req.param("id"));
     if (!id.success) throw invalid("id", "Aluno não encontrado");
@@ -147,13 +146,13 @@ export const peopleRoutes = new Hono<AppEnv>()
     });
   })
 
-  .post("/students", requireAdmin, async (c) => {
+  .post("/students", authorize("alunos", "editar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ personId: uuid.optional(), person: personInput.optional(), availability: availability.optional() }));
     if (error) return error;
     return c.json({ student: await createStudent(contextFrom(c), data) }, 201);
   })
 
-  .patch("/students/:id", requireAdmin, async (c) => {
+  .patch("/students/:id", authorize("alunos", "editar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ person: personInput.optional(), availability: availability.optional() }));
     if (error) return error;
     const ctx = contextFrom(c);
@@ -163,14 +162,14 @@ export const peopleRoutes = new Hono<AppEnv>()
     return c.json({ student: await getStudentRow(ctx.db, ctx, s.id) });
   })
 
-  .post("/students/:id/status", requireAdmin, async (c) => {
+  .post("/students/:id/status", authorize("alunos", "inativar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ status: z.enum([...STUDENT_STATUSES, "reativar"]) }));
     if (error) return error;
     return c.json({ student: await setStudentStatus(contextFrom(c), c.req.param("id"), data.status) });
   })
 
   /* ---------------------------------------------------------------------- salas */
-  .get("/rooms", async (c) => c.json({ rooms: await listRooms(contextFrom(c)) }))
+  .get("/rooms", authorize("turmas", "ver"), async (c) => c.json({ rooms: await listRooms(contextFrom(c)) }))
 
   .post("/rooms", requireAdmin, async (c) => {
     const { data, error } = await parseBody(

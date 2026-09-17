@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
 import { isoDate, uuid } from "../../http/query.ts";
-import { requireAdmin, requireTenant } from "../../http/require-tenant.ts";
+import {authorize} from "../../http/require-tenant.ts";
 import { parseBody } from "../../http/validation.ts";
 import {
   companyDetail,
@@ -38,23 +38,22 @@ const companyInput = z.object({
 });
 
 export const companyRoutes = new Hono<AppEnv>()
-  .use("*", requireTenant)
-  .get("/companies", async (c) => c.json({ companies: await listCompanies(contextFrom(c)) }))
-  .get("/companies/:id", async (c) => c.json(await companyDetail(contextFrom(c), c.req.param("id"))))
+  .get("/companies", authorize("empresas", "ver"), async (c) => c.json({ companies: await listCompanies(contextFrom(c)) }))
+  .get("/companies/:id", authorize("empresas", "ver"), async (c) => c.json(await companyDetail(contextFrom(c), c.req.param("id"))))
 
-  .post("/companies", requireAdmin, async (c) => {
+  .post("/companies", authorize("empresas", "editar"), async (c) => {
     const { data, error } = await parseBody(c, companyInput);
     if (error) return error;
     return c.json({ company: await createCompany(contextFrom(c), data) }, 201);
   })
 
-  .put("/companies/:id", requireAdmin, async (c) => {
+  .put("/companies/:id", authorize("empresas", "editar"), async (c) => {
     const { data, error } = await parseBody(c, companyInput);
     if (error) return error;
     return c.json({ company: await updateCompany(contextFrom(c), c.req.param("id"), data) });
   })
 
-  .post("/companies/:id/renew", requireAdmin, async (c) => {
+  .post("/companies/:id/renew", authorize("empresas", "editar"), async (c) => {
     const { data, error } = await parseBody(
       c,
       z.object({ endsOn: isoDate, licenses: z.number().int().optional(), addLessons: z.number().int().optional(), licensePriceCents: z.number().int().min(0).optional() }),
@@ -63,26 +62,26 @@ export const companyRoutes = new Hono<AppEnv>()
     return c.json({ company: await renewCompany(contextFrom(c), c.req.param("id"), data) });
   })
 
-  .post("/companies/:id/students", requireAdmin, async (c) => {
+  .post("/companies/:id/students", authorize("empresas", "editar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ studentId: uuid }));
     if (error) return error;
     return c.json(await linkStudent(contextFrom(c), c.req.param("id"), data.studentId));
   })
 
-  .delete("/companies/:id/students/:studentId", requireAdmin, async (c) =>
+  .delete("/companies/:id/students/:studentId", authorize("empresas", "editar"), async (c) =>
     c.json({ student: await unlinkStudent(contextFrom(c), c.req.param("id"), c.req.param("studentId")) }),
   )
 
-  .post("/companies/:id/charges", requireAdmin, async (c) => {
+  .post("/companies/:id/charges", authorize("empresas", "editar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ month: z.string() }));
     if (error) return error;
     return c.json({ charge: await generateCharge(contextFrom(c), c.req.param("id"), data.month) }, 201);
   })
 
-  .post("/company-charges/:id/pay", requireAdmin, async (c) => {
+  .post("/company-charges/:id/pay", authorize("empresas", "operar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ method: z.enum(PAYMENT_METHODS), paidOn: isoDate.optional() }));
     if (error) return error;
     return c.json({ charge: await payCharge(contextFrom(c), c.req.param("id"), data) });
   })
 
-  .post("/companies/:id/report", requireAdmin, async (c) => c.json({ company: await recordReport(contextFrom(c), c.req.param("id")) }));
+  .post("/companies/:id/report", authorize("empresas", "operar"), async (c) => c.json({ company: await recordReport(contextFrom(c), c.req.param("id")) }));

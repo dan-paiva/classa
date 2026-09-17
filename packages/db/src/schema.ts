@@ -144,9 +144,12 @@ export const tenant = pgTable("tenant", {
 export const MEMBERSHIP_ROLES = ["admin"] as const;
 export type MembershipRole = (typeof MEMBERSHIP_ROLES)[number];
 
+export const PROFILE_TYPE_VALUES = ["admin", "colaborador", "prestador", "aluno"] as const;
+export type AreaAccessMap = Partial<Record<"adm" | "com" | "ped" | "aca" | "cx" | "fin" | "mkt", "total" | "restrito">>;
+
 /**
- * Quem acessa qual escola. Por enquanto só existe o papel admin; a matriz
- * completa (hierarquia × área × escopo) chega na fase de perfis.
+ * Quem acessa qual escola e com qual perfil (DOMINIO.md §8): tipo de perfil, nível e áreas.
+ * `role` é legado (todos os vínculos antigos eram admin).
  */
 export const membership = pgTable(
   "membership",
@@ -159,10 +162,44 @@ export const membership = pgTable(
       .notNull()
       .references(() => authUser.id),
     role: text("role", { enum: MEMBERSHIP_ROLES }).notNull(),
+    profileType: text("profile_type", { enum: PROFILE_TYPE_VALUES }).notNull().default("admin"),
+    level: integer("level").notNull().default(1),
+    areas: jsonb("areas").$type<AreaAccessMap>().notNull().default({}),
+    /** Pessoa da escola ligada ao usuário (professor, aluno, colaborador). */
+    personId: uuid("person_id"),
+    status: text("status", { enum: ["ativo", "bloqueado"] }).notNull().default("ativo"),
     createdAt: createdAt(),
     deactivatedAt: tstz("deactivated_at"),
   },
-  (t) => [unique("membership_tenant_user_uq").on(t.tenantId, t.userId), index("membership_user_idx").on(t.userId)],
+  (t) => [
+    unique("membership_tenant_user_uq").on(t.tenantId, t.userId),
+    index("membership_user_idx").on(t.userId),
+    check("membership_level_range", sql`${t.level} between 1 and 5`),
+  ],
+);
+
+/** Convite: a conta nasce dele. O token vai só no link; aqui fica o hash. Vale 48 horas. */
+export const invitation = pgTable(
+  "invitation",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    email: text("email").notNull(),
+    personId: uuid("person_id"),
+    profileType: text("profile_type", { enum: PROFILE_TYPE_VALUES }).notNull(),
+    level: integer("level").notNull(),
+    areas: jsonb("areas").$type<AreaAccessMap>().notNull().default({}),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: tstz("expires_at").notNull(),
+    acceptedAt: tstz("accepted_at"),
+    acceptedUserId: text("accepted_user_id"),
+    revokedAt: tstz("revoked_at"),
+    createdBy: text("created_by"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("invitation_tenant_email_idx").on(t.tenantId, t.email)],
 );
 
 export const AUDIT_ACTIONS = ["create", "update", "deactivate", "reactivate", "delete", "cancel", "import", "transition"] as const;

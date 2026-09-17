@@ -339,6 +339,26 @@ export type FlowOptions = {
 };
 export type RenewalItem = { enrollmentId: string; endsOn: string; studentId: string; studentName: string; className: string; courseName: string; balance: number; urgent: boolean };
 
+export type Member = {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  profileType: "admin" | "colaborador" | "prestador" | "aluno";
+  level: number;
+  areas: Record<string, "total" | "restrito">;
+  personName: string | null;
+  status: "ativo" | "bloqueado";
+  lastSeenAt: string | null;
+};
+export type Invite = { id: string; email: string; profileType: Member["profileType"]; level: number; areas: Record<string, string>; personName: string | null; expiresAt: string; expired: boolean };
+export type MyArea = {
+  student: { id: string; status: StudentStatus; name: string; email: string | null };
+  enrollments: Omit<Enrollment, "studentStatus">[];
+  installments: Installment[];
+  lessons: { id: string; startsAt: string; endsAt: string; state: LessonState; className: string; courseName: string; courseColor: string; teacherName: string | null; roomName: string | null; roomLink: string | null; enrollmentId?: string; myStatus?: AttendanceStatus; cancelledInTime?: boolean | null }[];
+};
+
 export type GenerationResult = { created: number; existing: number; skipped: { date: string; startTime: string; reason: string }[]; conflicts: { date: string; startTime: string }[] };
 
 /* ---------------------------------------------------------------------- rotas */
@@ -437,6 +457,15 @@ export const school = {
   card: (slug: string, id: string) => request<{ card: WorkflowCard; transitions: WorkflowTransition[] }>(`${t(slug)}/cards/${id}`),
   updateCard: (slug: string, id: string, data: Record<string, unknown>) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}`, patch({ data })),
   moveCard: (slug: string, id: string, to: string, note?: string) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}/move`, post({ to, note })),
+
+  users: (slug: string) => request<{ members: Member[]; invites: Invite[] }>(`${t(slug)}/users`),
+  invite: (slug: string, input: { email?: string | null; personId?: string | null; profileType: string; level: number; areas: Record<string, string> }) =>
+    request<{ link: string }>(`${t(slug)}/invitations`, post(input)),
+  revokeInvite: (slug: string, id: string) => request(`${t(slug)}/invitations/${id}`, { method: "DELETE" }),
+  updateMember: (slug: string, id: string, input: { profileType: string; level: number; areas: Record<string, string> }) => request(`${t(slug)}/users/${id}`, patch(input)),
+  setMemberBlocked: (slug: string, id: string, blocked: boolean) => request(`${t(slug)}/users/${id}/${blocked ? "block" : "unblock"}`, post()),
+  myArea: (slug: string) => request<MyArea>(`${t(slug)}/minha-area`),
+  myLesson: (slug: string, lessonId: string, action: "cancelar" | "reagendar") => request(`${t(slug)}/minha-area/aulas/${lessonId}/${action}`, post()),
 
   payroll: (slug: string, month: string) => request<{ payroll: Payroll; periods: PayrollPeriod[] }>(`${t(slug)}/payroll?month=${month}`),
   closeMonth: (slug: string, month: string) => request(`${t(slug)}/payroll/${month}/close`, post()),

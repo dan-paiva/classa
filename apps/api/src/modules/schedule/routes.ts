@@ -4,11 +4,12 @@ import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
 import { invalid } from "../../http/errors.ts";
 import { isoDate, uuid } from "../../http/query.ts";
-import { requireAdmin, requireTenant } from "../../http/require-tenant.ts";
+import {authorize, isOwnLessonOnly, requireAdmin} from "../../http/require-tenant.ts";
 import { parseBody } from "../../http/validation.ts";
 import { contextFrom } from "../../services/context.ts";
 import { listEnrollments } from "../../services/enrollments.ts";
 import {
+  assertOwnLesson,
   cancelLesson,
   cancelStudentLesson,
   changeLessonTeacher,
@@ -39,14 +40,13 @@ function parseRange(from?: string, to?: string) {
 }
 
 export const scheduleRoutes = new Hono<AppEnv>()
-  .use("*", requireTenant)
 
   /* --------------------------------------------------------------------- turmas */
-  .get("/class-groups", async (c) =>
+  .get("/class-groups", authorize("turmas", "ver"), async (c) =>
     c.json({ classGroups: await listClassGroups(contextFrom(c), { courseId: c.req.query("courseId"), teacherId: c.req.query("teacherId") }) }),
   )
 
-  .get("/class-groups/:id", async (c) => {
+  .get("/class-groups/:id", authorize("turmas", "ver"), async (c) => {
     const ctx = contextFrom(c);
     const id = uuid.safeParse(c.req.param("id"));
     if (!id.success) throw invalid("id", "Turma não encontrada");
@@ -57,7 +57,7 @@ export const scheduleRoutes = new Hono<AppEnv>()
     return c.json({ classGroup, enrollments, lessons });
   })
 
-  .post("/class-groups", requireAdmin, async (c) => {
+  .post("/class-groups", authorize("turmas", "editar"), async (c) => {
     const { data, error } = await parseBody(
       c,
       z.object({
@@ -88,21 +88,23 @@ export const scheduleRoutes = new Hono<AppEnv>()
     return c.json({ ...result, generation }, 201);
   })
 
-  .post("/class-groups/:id/generate", requireAdmin, async (c) => {
+  .post("/class-groups/:id/generate", authorize("turmas", "editar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ from: isoDate, to: isoDate }));
     if (error) return error;
     return c.json({ generation: await generateLessons(contextFrom(c), c.req.param("id"), data) });
   })
 
   /* ---------------------------------------------------------------------- aulas */
-  .get("/lessons", async (c) => {
+  .get("/lessons", authorize("agenda", "ver"), async (c) => {
     const ctx = contextFrom(c);
     await markUnfinishedLessons(ctx);
     const range = parseRange(c.req.query("from"), c.req.query("to"));
+    const own = isOwnLessonOnly(c);
+    if (own && !c.var.tenant.teacherId) return c.json({ lessons: [] });
     return c.json({
       lessons: await listLessons(ctx, {
         ...range,
-        teacherId: c.req.query("teacherId") || undefined,
+        teacherId: own ? c.var.tenant.teacherId! : c.req.query("teacherId") || undefined,
         courseId: c.req.query("courseId") || undefined,
         classGroupId: c.req.query("classGroupId") || undefined,
         studentId: c.req.query("studentId") || undefined,
@@ -110,45 +112,56 @@ export const scheduleRoutes = new Hono<AppEnv>()
     });
   })
 
-  .get("/lessons/:id", async (c) => {
+  .get("/lessons/:id", authorize("agenda", "ver"), async (c) => {
     const ctx = contextFrom(c);
     const id = uuid.safeParse(c.req.param("id"));
     if (!id.success) throw invalid("id", "Aula não encontrada");
+    if (isOwnLessonOnly(c)) await assertOwnLesson(ctx, c.var.tenant.teacherId, id.data);
     const [lesson] = await listLessons(ctx, { from: new Date(0), to: new Date(0), id: id.data });
     if (!lesson) return c.json({ error: "not_found", message: "Aula não encontrada." }, 404);
     return c.json({ lesson, roster: await lessonRoster(ctx, id.data) });
   })
 
-  .post("/lessons/:id/attendance", requireAdmin, async (c) => {
+  .post("/lessons/:id/attendance", authorize("agenda", "operar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ entries: z.array(z.object({ enrollmentId: uuid, status: z.enum(["presente", "falta"]) })) }));
     if (error) return error;
-    await setAttendance(contextFrom(c), c.req.param("id"), data.entries);
+    const ctx = contextFrom(c);
+    if (isOwnLessonOnly(c)) await assertOwnLesson(ctx, c.var.tenant.teacherId, c.req.param("id"));
+    await setAttendance(ctx, c.req.param("id"), data.entries);
     return c.json({ ok: true });
   })
 
-  .post("/lessons/:id/start", requireAdmin, async (c) => c.json({ lesson: await startLesson(contextFrom(c), c.req.param("id")) }))
-  .post("/lessons/:id/conclude", requireAdmin, async (c) => c.json({ lesson: await concludeLesson(contextFrom(c), c.req.param("id")) }))
+  .post("/lessons/:id/start", authorize("agenda", "operar"), async (c) => {
+    const ctx = contextFrom(c);
+    if (isOwnLessonOnly(c)) await assertOwnLesson(ctx, c.var.tenant.teacherId, c.req.param("id"));
+    return c.json({ lesson: await startLesson(ctx, c.req.param("id")) });
+  })
+  .post("/lessons/:id/conclude", authorize("agenda", "operar"), async (c) => {
+    const ctx = contextFrom(c);
+    if (isOwnLessonOnly(c)) await assertOwnLesson(ctx, c.var.tenant.teacherId, c.req.param("id"));
+    return c.json({ lesson: await concludeLesson(ctx, c.req.param("id")) });
+  })
 
-  .post("/lessons/:id/cancel", requireAdmin, async (c) => {
+  .post("/lessons/:id/cancel", authorize("agenda", "inativar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ reason: z.string().default(""), undo: z.boolean().default(false) }));
     if (error) return error;
     return c.json({ lesson: await cancelLesson(contextFrom(c), c.req.param("id"), data.reason, data.undo) });
   })
 
-  .post("/lessons/:id/teacher", requireAdmin, async (c) => {
+  .post("/lessons/:id/teacher", authorize("agenda", "editar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ teacherId: uuid }));
     if (error) return error;
     return c.json({ lesson: await changeLessonTeacher(contextFrom(c), c.req.param("id"), data.teacherId) });
   })
 
-  .post("/lessons/:id/students/:enrollmentId/cancel", requireAdmin, async (c) => {
+  .post("/lessons/:id/students/:enrollmentId/cancel", authorize("agenda", "editar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ undo: z.boolean().default(false) }));
     if (error) return error;
     return c.json({ entry: await cancelStudentLesson(contextFrom(c), c.req.param("id"), c.req.param("enrollmentId"), data.undo) });
   })
 
   /* ------------------------------------------------------------------- feriados */
-  .get("/holidays", async (c) => {
+  .get("/holidays", authorize("agenda", "ver"), async (c) => {
     const year = Number(c.req.query("year") ?? new Date().getFullYear());
     return c.json({ holidays: await listHolidays(contextFrom(c), `${year}-01-01`, `${year}-12-31`) });
   })

@@ -5,12 +5,18 @@ import { school, SUPPORT_REASON_LABELS, type RosterEntry, type SupportReason } f
 import { fmtLongDay, fmtTime, isoDay, money, parseReais, todayIso } from "../lib/format.ts";
 import { LessonStateBadge } from "../status.tsx";
 import { ActionError, Badge, ColorDot, LoadError, Loading, PageHead } from "../ui.tsx";
+import { useCan } from "../lib/permissions.ts";
 
 export function LessonDetail() {
   const { slug, lessonId } = useParams({ strict: false }) as { slug: string; lessonId: string };
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["lesson", slug, lessonId], queryFn: () => school.lesson(slug, lessonId) });
-  const teachers = useQuery({ queryKey: ["teachers", slug], queryFn: () => school.teachers(slug) });
+  const canEditAgenda = useCan("agenda", "editar");
+  const canCancel = useCan("agenda", "inativar");
+  const canSeeClasses = useCan("turmas");
+  const canSeeStudents = useCan("alunos");
+  const canEditPayroll = useCan("folha", "editar");
+  const teachers = useQuery({ queryKey: ["teachers", slug], queryFn: () => school.teachers(slug), enabled: canEditAgenda });
   const [draft, setDraft] = useState<Record<string, "presente" | "falta">>({});
   const [reason, setReason] = useState("");
   const [newTeacher, setNewTeacher] = useState("");
@@ -54,9 +60,13 @@ export function LessonDetail() {
           Agenda
         </Link>
         <span aria-hidden="true">/</span>
-        <Link to="/e/$slug/turmas/$classGroupId" params={{ slug, classGroupId: l.classGroupId }}>
-          {l.className}
-        </Link>
+        {canSeeClasses ? (
+          <Link to="/e/$slug/turmas/$classGroupId" params={{ slug, classGroupId: l.classGroupId }}>
+            {l.className}
+          </Link>
+        ) : (
+          <span>{l.className}</span>
+        )}
       </nav>
 
       <PageHead
@@ -110,8 +120,9 @@ export function LessonDetail() {
             )}
           </dl>
 
-          {l.state === "agendada" && !started && (
+          {l.state === "agendada" && !started && (canEditAgenda || canCancel) && (
             <div className="stack">
+              {canEditAgenda && (
               <div className="inline-form">
                 <div className="field">
                   <label htmlFor="new-teacher">Trocar professor desta aula</label>
@@ -128,6 +139,8 @@ export function LessonDetail() {
                   Trocar
                 </button>
               </div>
+              )}
+              {canCancel && (
               <div className="inline-form">
                 <div className="field">
                   <label htmlFor="cancel-reason">Cancelar a aula (ninguém perde crédito)</label>
@@ -142,9 +155,10 @@ export function LessonDetail() {
                   Cancelar aula
                 </button>
               </div>
+              )}
             </div>
           )}
-          {l.state === "cancelada" && !started && (
+          {l.state === "cancelada" && !started && canCancel && (
             <button type="button" className="btn" onClick={() => action.mutate(() => school.cancelLesson(slug, l.id, "", true))}>
               Desfazer cancelamento
             </button>
@@ -158,9 +172,11 @@ export function LessonDetail() {
                 <p className="small">
                   <Badge tone="danger">Descontada da folha</Badge> Suporte pedido: {SUPPORT_REASON_LABELS[l.supportReason]}
                   {l.supportDetail ? ` · ${l.supportDetail}` : ""}{" "}
-                  <button type="button" className="btn-link" onClick={() => action.mutate(() => school.requestSupport(slug, l.id, null))}>
-                    Retirar pedido
-                  </button>
+                  {canEditPayroll && (
+                    <button type="button" className="btn-link" onClick={() => action.mutate(() => school.requestSupport(slug, l.id, null))}>
+                      Retirar pedido
+                    </button>
+                  )}
                 </p>
               ) : (
                 <div className="inline-form">
@@ -184,7 +200,7 @@ export function LessonDetail() {
                   </button>
                 </div>
               )}
-              {l.individual && (
+              {l.individual && canEditPayroll && (
                 <>
                   {l.rateOverrideCents != null ? (
                     <p className="small">
@@ -234,9 +250,13 @@ export function LessonDetail() {
                   return (
                     <tr key={r.id}>
                       <td>
-                        <Link to="/e/$slug/alunos/$studentId" params={{ slug, studentId: r.studentId }}>
-                          {r.studentName}
-                        </Link>
+                        {canSeeStudents ? (
+                          <Link to="/e/$slug/alunos/$studentId" params={{ slug, studentId: r.studentId }}>
+                            {r.studentName}
+                          </Link>
+                        ) : (
+                          r.studentName
+                        )}
                         <div className="muted small">saldo {r.balance} aulas</div>
                       </td>
                       <td className="right">
@@ -263,7 +283,7 @@ export function LessonDetail() {
                           <Badge tone="ok">Presente</Badge>
                         ) : st === "falta" ? (
                           <Badge tone="danger">Falta</Badge>
-                        ) : !started && l.state === "agendada" ? (
+                        ) : !started && l.state === "agendada" && canEditAgenda ? (
                           <button type="button" className="btn-link" onClick={() => confirm(`Cancelar a ida de ${r.studentName} a esta aula?`) && action.mutate(() => school.cancelStudentLesson(slug, l.id, r.enrollmentId))}>
                             Cancelar agendamento
                           </button>
