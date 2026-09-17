@@ -5,6 +5,7 @@ import type { Auth } from "./auth.ts";
 import { DomainError } from "./http/errors.ts";
 import { requireTenant } from "./http/require-tenant.ts";
 import { pgErrorCode } from "./http/pg-errors.ts";
+import { auditRoutes } from "./modules/audit/routes.ts";
 import { companyRoutes } from "./modules/companies/routes.ts";
 import { courseRoutes } from "./modules/courses/routes.ts";
 import { financeRoutes } from "./modules/finance/routes.ts";
@@ -100,7 +101,8 @@ export function createApp(resolve: (env: unknown) => Services) {
     .route("/t/:slug", companyRoutes)
     .route("/t/:slug", workflowRoutes)
     .route("/t/:slug", userRoutes)
-    .route("/t/:slug", portalRoutes);
+    .route("/t/:slug", portalRoutes)
+    .route("/t/:slug", auditRoutes);
 
   return routes;
 }

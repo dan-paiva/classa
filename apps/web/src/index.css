@@ -256,3 +256,4 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); bord
 .area-choice { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 14px; font-weight: 400; }
 .area-choice select { width: auto; }
 .subpanel h3 { font-size: 15px; }
+pre.json { margin: 0; font-size: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px; overflow: auto; max-height: 320px; white-space: pre-wrap; word-break: break-word; }
