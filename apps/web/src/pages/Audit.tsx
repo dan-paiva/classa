@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { Fragment, useState } from "react";
-import { school } from "../api-school.ts";
-import { fmtDate, fmtTime } from "../lib/format.ts";
+import { type AuditEntry, school } from "../api-school.ts";
+import { fmtDate, fmtTime, money } from "../lib/format.ts";
 import { Badge, LoadError, Loading, PageHead, type Tone } from "../ui.tsx";
 
 const ENTITY: Record<string, string> = {
@@ -40,6 +40,125 @@ const ACTION: Record<string, [string, Tone]> = {
   transition: ["mudança de etapa", "info"],
 };
 const label = (e: string) => ENTITY[e] ?? (e.startsWith("fluxo:") ? `Fluxo · ${e.slice(6)}` : e);
+
+/** Nome de cada campo em português; o que não estiver aqui aparece como veio. */
+const FIELD: Record<string, string> = {
+  name: "nome",
+  email: "e-mail",
+  phone: "telefone",
+  cpf: "CPF",
+  status: "situação",
+  state: "situação da aula",
+  stage: "etapa",
+  previousStage: "etapa anterior",
+  lostReason: "motivo da perda",
+  data: "dados",
+  studentId: "aluno",
+  teacherId: "professor",
+  originalTeacherId: "professor original",
+  roomId: "sala",
+  classGroupId: "turma",
+  courseId: "curso",
+  moduleId: "módulo",
+  personId: "pessoa",
+  companyId: "empresa",
+  enrollmentId: "matrícula",
+  capacity: "vagas",
+  startsAt: "início",
+  endsAt: "término",
+  startsOn: "começa em",
+  endsOn: "termina em",
+  endedAt: "encerrada em",
+  dueDate: "vencimento",
+  paidOn: "pago em",
+  amountCents: "valor",
+  amount: "quantidade",
+  rateOverrideCents: "valor da aula",
+  teacherRateCents: "valor por aula do professor",
+  hourlyRateCents: "valor por hora",
+  lessonPriceCents: "preço da aula",
+  weeklyLimit: "limite semanal",
+  availability: "disponibilidade",
+  areas: "áreas",
+  level: "nível",
+  profileType: "tipo de acesso",
+  acceptedAt: "aceito em",
+  revokedAt: "cancelado em",
+  deactivatedAt: "inativado em",
+  cancelledAt: "cancelado em",
+  cancelReason: "motivo do cancelamento",
+  cancelledInTime: "cancelou com antecedência",
+  supportReason: "motivo do apoio",
+  notes: "observações",
+  kind: "tipo",
+  membershipId: "acesso",
+  settings: "configurações",
+  createdAt: "criado em",
+  createdBy: "criado por",
+  updatedAt: "atualizado em",
+  expiresAt: "expira em",
+  acceptedUserId: "conta que aceitou",
+  actorId: "autor",
+  justification: "justificativa",
+  reversalOfId: "estorno de",
+  color: "cor",
+  position: "posição",
+  modality: "modalidade",
+  timezone: "fuso",
+  slug: "link da escola",
+  rateOverrideReason: "motivo do valor",
+  supportDetail: "detalhe do apoio",
+  paidCents: "valor pago",
+  netCents: "valor líquido",
+  grossCents: "valor bruto",
+  discountCents: "descontos",
+};
+const fieldLabel = (f: string) => FIELD[f] ?? f;
+
+const ISO = /^\d{4}-\d{2}-\d{2}T/;
+
+/** Valor de um campo em texto simples: data vira data, objeto vira "chave: valor". */
+function valueText(v: unknown, field?: string): string {
+  if (v === null || v === undefined || v === "") return "—";
+  // valor em centavos no banco vira dinheiro na tela
+  if (field?.endsWith("Cents") && typeof v === "number") return money(v);
+  if (typeof v === "boolean") return v ? "sim" : "não";
+  if (typeof v === "string") return ISO.test(v) ? `${fmtDate(v)} ${fmtTime(v)}` : v;
+  if (Array.isArray(v)) return v.length ? v.map((item) => valueText(item, field)).join(", ") : "—";
+  if (typeof v === "object") {
+    const entries = Object.entries(v as Record<string, unknown>);
+    return entries.length ? entries.map(([k, val]) => `${fieldLabel(k)}: ${valueText(val, k)}`).join(" · ") : "—";
+  }
+  return String(v);
+}
+
+function Detail({ entry }: { entry: AuditEntry }) {
+  const before = (entry.before ?? {}) as Record<string, unknown>;
+  const after = (entry.after ?? {}) as Record<string, unknown>;
+  const hidden = new Set(["id", "tenantId", "createdAt", "createdBy", "updatedAt", "actorId"]);
+  const fields = entry.changed.length ? entry.changed : Object.keys(after).filter((k) => !hidden.has(k));
+  if (fields.length === 0) return <p className="muted small">Sem campos para mostrar.</p>;
+  return (
+    <table className="compact audit-detail">
+      <thead>
+        <tr>
+          <th>Campo</th>
+          <th>Antes</th>
+          <th>Depois</th>
+        </tr>
+      </thead>
+      <tbody>
+        {fields.map((f) => (
+          <tr key={f}>
+            <td>{fieldLabel(f)}</td>
+            <td className="muted">{entry.before ? valueText(before[f], f) : "—"}</td>
+            <td>{valueText(after[f], f)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
 
 export function Audit() {
   const { slug } = useParams({ strict: false }) as { slug: string };
@@ -95,10 +214,13 @@ export function Audit() {
                       {e.actorEmail && <div className="muted">{e.actorEmail}</div>}
                     </td>
                     <td>
-                      {label(e.entity)} <Badge tone={(ACTION[e.action] ?? [e.action, "neutral"])[1]}>{(ACTION[e.action] ?? [e.action])[0]}</Badge>
+                      {label(e.entity)}{" "}
+                      <Badge tone={(ACTION[e.action] ?? [e.action, "neutral"])[1]}>
+                        {e.action === "transition" && e.entity === "lesson" ? "mudança de situação" : (ACTION[e.action] ?? [e.action])[0]}
+                      </Badge>
                     </td>
                     <td className="small">
-                      {e.changed.length ? e.changed.join(", ") : "—"}
+                      {e.changed.length ? e.changed.map(fieldLabel).join(", ") : "—"}
                       {e.justification && <div className="muted">Justificativa: {e.justification}</div>}{" "}
                       <button type="button" className="btn-link" onClick={() => setOpen(open === e.id ? null : e.id)}>
                         {open === e.id ? "Fechar" : "Detalhes"}
@@ -108,10 +230,7 @@ export function Audit() {
                   {open === e.id && (
                     <tr className="detail-row">
                       <td colSpan={4}>
-                        <div className="grid-2">
-                          <pre className="json">{JSON.stringify(e.before, null, 2) ?? "—"}</pre>
-                          <pre className="json">{JSON.stringify(e.after, null, 2) ?? "—"}</pre>
-                        </div>
+                        <Detail entry={e} />
                       </td>
                     </tr>
                   )}

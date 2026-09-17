@@ -359,6 +359,47 @@ export type MyArea = {
   lessons: { id: string; startsAt: string; endsAt: string; state: LessonState; className: string; courseName: string; courseColor: string; teacherName: string | null; roomName: string | null; roomLink: string | null; enrollmentId?: string; myStatus?: AttendanceStatus; cancelledInTime?: boolean | null }[];
 };
 
+export type Alert = { key: string; tone: "danger" | "warn" | "info"; title: string; detail: string; count: number; resource: string };
+
+export type FinanceReport = {
+  months: { month: string; receivedCents: number; recognizedCents: number; payrollCents: number; marginCents: number; lessons: number; students: number; payrollStatus: string }[];
+};
+
+type AttendanceCounts = { present: number; absent: number; cancelledInTime: number; cancelledLate: number; attendancePercent: number | null };
+
+export type AttendanceReport = {
+  range: { from: string; to: string };
+  totals: AttendanceCounts & { lessons: number };
+  groups: (AttendanceCounts & { classGroupId: string; className: string; courseName: string; courseColor: string; lessons: number })[];
+  students: (AttendanceCounts & { studentId: string; studentName: string })[];
+};
+
+export type TeacherReport = {
+  range: { from: string; to: string };
+  weeks: number;
+  teachers: {
+    teacherId: string;
+    teacherName: string;
+    weeklyLimit: number | null;
+    lessons: number;
+    cancelled: number;
+    unfinished: number;
+    minutes: number;
+    substitutions: number;
+    support: number;
+    hours: number;
+    lessonsPerWeek: number;
+    overLimit: boolean;
+    costCents: number | null;
+  }[];
+};
+
+export type EnrollmentReport = {
+  months: { month: string; started: number; ended: number }[];
+  byStatus: { status: string; n: number }[];
+  byCourse: { courseName: string; courseColor: string; active: number; students: number }[];
+};
+
 export type AuditEntry = {
   id: string;
   createdAt: string;
@@ -480,6 +521,16 @@ export const school = {
   setMemberBlocked: (slug: string, id: string, blocked: boolean) => request(`${t(slug)}/users/${id}/${blocked ? "block" : "unblock"}`, post()),
   myArea: (slug: string) => request<MyArea>(`${t(slug)}/minha-area`),
   myLesson: (slug: string, lessonId: string, action: "cancelar" | "reagendar") => request(`${t(slug)}/minha-area/aulas/${lessonId}/${action}`, post()),
+
+  alerts: (slug: string) => request<{ alerts: Alert[] }>(`${t(slug)}/alerts`),
+
+  reportFinance: (slug: string, months: number) => request<FinanceReport>(`${t(slug)}/reports/financeiro?months=${months}`),
+
+  reportAttendance: (slug: string, range: { from: string; to: string }) => request<AttendanceReport>(`${t(slug)}/reports/frequencia${qs(range)}`),
+
+  reportTeachers: (slug: string, range: { from: string; to: string }) => request<TeacherReport>(`${t(slug)}/reports/professores${qs(range)}`),
+
+  reportEnrollments: (slug: string, months: number) => request<EnrollmentReport>(`${t(slug)}/reports/matriculas?months=${months}`),
 
   audit: (slug: string, filters: { entity?: string; page?: number }) =>
     request<{ entries: AuditEntry[]; hasMore: boolean; entities: { entity: string; n: number }[] }>(

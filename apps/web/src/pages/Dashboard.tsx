@@ -4,7 +4,49 @@ import { useMembership } from "../lib/permissions.ts";
 import { school } from "../api-school.ts";
 import { addDaysIso, fmtShortDate, fmtTime, fmtWeekday, money, todayIso } from "../lib/format.ts";
 import { LessonStateBadge, UsageBar } from "../status.tsx";
-import { ColorDot, Empty, Loading, PageHead, Stat } from "../ui.tsx";
+import { Badge, ColorDot, Empty, Loading, PageHead, Stat } from "../ui.tsx";
+
+/** Para onde cada alerta leva: o alerta serve para resolver, não só para avisar. */
+const ALERT_LINK: Record<string, string> = {
+  "aulas-nao-finalizadas": "/e/$slug/agenda",
+  "aulas-sem-professor": "/e/$slug/agenda",
+  "aulas-sem-sala": "/e/$slug/agenda",
+  "parcelas-vencidas": "/e/$slug/financeiro",
+  renovacoes: "/e/$slug/acoes",
+  "pacotes-zerados": "/e/$slug/alunos",
+  "folha-aberta": "/e/$slug/folha",
+  "empresas-vencendo": "/e/$slug/empresas",
+  "empresas-licencas": "/e/$slug/empresas",
+};
+
+function Alerts({ slug }: { slug: string }) {
+  const q = useQuery({ queryKey: ["alerts", slug], queryFn: () => school.alerts(slug) });
+  const alerts = q.data?.alerts ?? [];
+  if (q.isPending || alerts.length === 0) return null;
+  return (
+    <section className="panel stack">
+      <div className="row">
+        <h2>O que precisa de atenção</h2>
+        <Link to="/e/$slug/relatorios" params={{ slug }}>
+          Ver relatórios
+        </Link>
+      </div>
+      <ul className="alert-list">
+        {alerts.map((a) => (
+          <li key={a.key}>
+            <Link to={ALERT_LINK[a.key] ?? "/e/$slug"} params={{ slug }} className="alert-item">
+              <Badge tone={a.tone}>{a.count}</Badge>
+              <span>
+                {a.title}
+                <small className="muted">{a.detail}</small>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
 
 export function Dashboard() {
   const { slug } = useParams({ strict: false }) as { slug: string };
@@ -53,6 +95,8 @@ function DashboardContent({ slug }: { slug: string }) {
         <Stat label="Recebido no mês" value={s ? money(s.receivedCents) : "…"} tone="ok" />
         <Stat label="Vencido em aberto" value={s ? money(s.overdueCents) : "…"} tone={s?.overdueCents ? "danger" : undefined} hint={s ? `${s.overdueCount} parcelas · ${s.overdueStudents} alunos` : undefined} />
       </div>
+
+      <Alerts slug={slug} />
 
       <div className="grid-2">
         <section className="panel stack">

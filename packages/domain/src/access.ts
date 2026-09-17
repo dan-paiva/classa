@@ -55,6 +55,7 @@ export const RESOURCES = [
   "fluxo:com",
   "fluxo:cx",
   "fluxo:mkt",
+  "relatorios",
   "configuracoes",
   "usuarios",
   "auditoria",
@@ -79,6 +80,7 @@ export const RESOURCE_AREAS: Record<Resource, readonly Area[]> = {
   "fluxo:com": ["com"],
   "fluxo:cx": ["cx"],
   "fluxo:mkt": ["mkt"],
+  relatorios: AREAS,
   configuracoes: [],
   usuarios: [],
   auditoria: [],
@@ -86,6 +88,7 @@ export const RESOURCE_AREAS: Record<Resource, readonly Area[]> = {
 
 /** Áreas que permitem agir (operar, editar, inativar); quando não listado, as mesmas de ver. */
 export const RESOURCE_ACT_AREAS: Partial<Record<Resource, readonly Area[]>> = {
+  relatorios: [], // relatório é só leitura
   agenda: ["ped", "aca"],
   cursos: ["ped", "aca"],
   turmas: ["ped", "aca"],
