@@ -393,6 +393,8 @@ export const classGroup = pgTable(
     modality: text("modality", { enum: MODALITIES }).notNull(),
     capacity: integer("capacity").notNull(),
     individual: boolean("individual").notNull().default(false),
+    /** Aula particular: valor fixo pago ao professor por aula (os demais cursos usam valor hora × duração). */
+    teacherRateCents: integer("teacher_rate_cents"),
     startsOn: date("starts_on").notNull(),
     endsOn: date("ends_on").notNull(),
     createdAt: createdAt(),
@@ -445,6 +447,9 @@ export const holiday = pgTable(
 );
 
 export const LESSON_STATES = ["agendada", "em_andamento", "concluida", "nao_finalizada", "cancelada"] as const;
+
+export const SUPPORT_REASONS = ["pedagogico", "tecnico", "comportamento", "substituicao_parcial", "outro"] as const;
+export type SupportReason = (typeof SUPPORT_REASONS)[number];
 export type LessonState = (typeof LESSON_STATES)[number];
 
 export const lesson = pgTable(
@@ -470,6 +475,13 @@ export const lesson = pgTable(
     state: text("state", { enum: LESSON_STATES }).notNull().default("agendada"),
     cancelReason: text("cancel_reason"),
     notes: text("notes"),
+    /** Valor pago ao professor só nesta aula (aula particular), com motivo. */
+    rateOverrideCents: integer("rate_override_cents"),
+    rateOverrideReason: text("rate_override_reason"),
+    /** Pedido de suporte do professor: a aula é descontada da folha. */
+    supportReason: text("support_reason", { enum: SUPPORT_REASONS }),
+    supportDetail: text("support_detail"),
+    supportRequestedAt: tstz("support_requested_at"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -660,4 +672,64 @@ export const payment = pgTable(
     createdAt: createdAt(),
   },
   (t) => [check("payment_amount_not_zero", sql`${t.amountCents} <> 0`), index("payment_installment_idx").on(t.installmentId)],
+);
+
+/* ---------------------------------------------------------------------------
+ * Folha de professores
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Um registro por fechamento. Reabrir marca `reopenedAt` (com justificativa) e mantém as
+ * linhas; fechar de novo cria outro registro. A competência vigente é o último sem reabertura.
+ */
+export const payrollPeriod = pgTable(
+  "payroll_period",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    /** "AAAA-MM" */
+    month: text("month").notNull(),
+    closedAt: tstz("closed_at").notNull(),
+    closedBy: text("closed_by"),
+    grossCents: integer("gross_cents").notNull(),
+    discountCents: integer("discount_cents").notNull(),
+    netCents: integer("net_cents").notNull(),
+    lessons: integer("lessons").notNull(),
+    reopenedAt: tstz("reopened_at"),
+    reopenedBy: text("reopened_by"),
+    reopenJustification: text("reopen_justification"),
+  },
+  (t) => [
+    index("payroll_period_tenant_month_idx").on(t.tenantId, t.month),
+    uniqueIndex("payroll_period_open_uq").on(t.tenantId, t.month).where(sql`${t.reopenedAt} is null`),
+  ],
+);
+
+export const payrollLine = pgTable(
+  "payroll_line",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    periodId: uuid("period_id")
+      .notNull()
+      .references(() => payrollPeriod.id),
+    teacherId: uuid("teacher_id")
+      .notNull()
+      .references(() => teacher.id),
+    paidLessons: integer("paid_lessons").notNull(),
+    discountedLessons: integer("discounted_lessons").notNull(),
+    minutes: integer("minutes").notNull(),
+    grossCents: integer("gross_cents").notNull(),
+    discountCents: integer("discount_cents").notNull(),
+    netCents: integer("net_cents").notNull(),
+    /** Aulas que compõem a linha, gravadas no fechamento: [{ lessonId, valueCents, situation }]. */
+    details: jsonb("details").notNull(),
+    paidOn: date("paid_on"),
+    paidBy: text("paid_by"),
+  },
+  (t) => [unique("payroll_line_period_teacher_uq").on(t.periodId, t.teacherId)],
 );

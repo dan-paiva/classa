@@ -31,6 +31,7 @@ import { createEnrollment, listEnrollments } from "../src/services/enrollments.t
 import { listInstallments, refreshDelinquency, registerPayment, reversePayment } from "../src/services/finance.ts";
 import { cancelLesson, cancelStudentLesson, changeLessonTeacher, concludeLesson, markUnfinishedLessons, setAttendance } from "../src/services/lessons.ts";
 import { createRoom, createStudent, createTeacher, setStudentStatus } from "../src/services/people.ts";
+import { closeMonth, markLinePaid, overrideLessonRate, requestSupport, setClassGroupTeacherRate, computePayroll } from "../src/services/payroll.ts";
 import { createClassGroup, generateLessons, importNationalHolidays } from "../src/services/schedule.ts";
 
 const SLUG = "demo";
@@ -85,7 +86,7 @@ async function resetDemo(db: Database) {
   const id = t.id;
   // ordem inversa das dependências
   for (const table of [
-    "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
+    "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
     "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "person",
     "room", "course_module", "course", "audit_log", "membership",
   ]) {
@@ -272,6 +273,7 @@ async function main() {
         courseId: particular.id, name: `Particular · ${s.name}`, teacherId: teachers[teacherIdx]!.id, roomId: rooms[roomKey].id, modality,
         startsOn: start, endsOn: end, schedules: schedules.map(([weekday, startTime]) => ({ weekday, startTime })),
       });
+      await setClassGroupTeacherRate(nowCtx, classGroup.id, pick([10000, 12000, 12000, 15000]));
       particulares.push({ classGroup, student: s });
     }
     log(`${particulares.length} aulas particulares`);
@@ -323,6 +325,7 @@ async function main() {
     let cancelled = 0;
     let substituted = 0;
     let unfinished = 0;
+    let supports = 0;
     const recent = new Date(realNow.getTime() - 7 * 86400_000);
     for (const l of past) {
       const before = (hours: number) => at(base, new Date(l.startsAt.getTime() - hours * 3600_000));
@@ -358,9 +361,36 @@ async function main() {
       }
       await concludeLesson(after, l.id);
       concluded++;
+      if (chance(0.03)) {
+        await requestSupport(after, l.id, { reason: pick(["pedagogico", "tecnico", "comportamento", "substituicao_parcial"] as const), detail: "Registrado pelo professor ao fim da aula" });
+        supports++;
+      }
     }
     await markUnfinishedLessons(nowCtx);
-    log(`${concluded} aulas concluídas com presença, ${cancelled} canceladas, ${substituted} com substituto, ${unfinished} não finalizadas`);
+    log(`${concluded} aulas concluídas com presença, ${cancelled} canceladas, ${substituted} com substituto, ${unfinished} não finalizadas, ${supports} com pedido de suporte`);
+
+    /* ------------------------------------------------------------------ folha */
+    const privateLessons = await db
+      .select({ id: lesson.id, endsAt: lesson.endsAt })
+      .from(lesson)
+      .where(sql`${lesson.tenantId} = ${school!.id} and ${lesson.state} = 'concluida' and ${lesson.classGroupId} in (${sql.join(particulares.map((p) => sql`${p.classGroup.id}`), sql`, `)})`)
+      .limit(3);
+    for (const pl of privateLessons.slice(0, 2)) {
+      await overrideLessonRate(at(base, new Date(pl.endsAt.getTime() + 3600_000)), pl.id, { cents: 8000, reason: "Aula encerrada 20 minutos antes" });
+    }
+    const lastMonth = (() => {
+      const [y, m] = today.split("-").map(Number);
+      return m === 1 ? `${y! - 1}-12` : `${y}-${String(m! - 1).padStart(2, "0")}`;
+    })();
+    const folha = await computePayroll(nowCtx, lastMonth);
+    if (folha.status === "pronta") {
+      await closeMonth(nowCtx, lastMonth);
+      const fechada = await computePayroll(nowCtx, lastMonth);
+      for (const line of fechada.lines.slice(0, -2)) await markLinePaid(nowCtx, line.lineId!, today);
+      log(`folha de ${lastMonth} fechada (${fechada.lines.length} professores, 2 ainda sem pagamento)`);
+    } else {
+      log(`folha de ${lastMonth} não fechada: ${folha.status}`);
+    }
 
     /* --------------------------------------------------------------- pagamentos */
     const due = (await listInstallments(nowCtx)).filter((i) => i.dueDate <= today && i.status !== "cancelada");

@@ -305,8 +305,14 @@ export async function financeSummary(ctx: ServiceContext, month: string) {
            where e.tenant_id = ${ctx.tenantId} and e.ended_at is null) b`,
     );
 
+  const { computePayroll } = await import("./payroll.ts");
+  const payroll = await computePayroll(ctx, month);
+
   return {
     month,
+    payrollCostCents: payroll.totals.netCents,
+    payrollStatus: payroll.status,
+    marginCents: Number(recognized?.cents ?? 0) - payroll.totals.netCents,
     recognizedCents: Number(recognized?.cents ?? 0),
     concludedLessons: recognized?.lessons ?? 0,
     receivedCents: Number(received?.cents ?? 0),

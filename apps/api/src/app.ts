@@ -5,6 +5,7 @@ import { DomainError } from "./http/errors.ts";
 import { pgErrorCode } from "./http/pg-errors.ts";
 import { courseRoutes } from "./modules/courses/routes.ts";
 import { financeRoutes } from "./modules/finance/routes.ts";
+import { payrollRoutes } from "./modules/payroll/routes.ts";
 import { peopleRoutes } from "./modules/people/routes.ts";
 import { scheduleRoutes } from "./modules/schedule/routes.ts";
 import { tenantRoutes } from "./modules/tenants/routes.ts";
@@ -76,7 +77,8 @@ export function createApp(resolve: (env: unknown) => Services) {
     .route("/t/:slug", courseRoutes)
     .route("/t/:slug", peopleRoutes)
     .route("/t/:slug", scheduleRoutes)
-    .route("/t/:slug", financeRoutes);
+    .route("/t/:slug", financeRoutes)
+    .route("/t/:slug", payrollRoutes);
 
   return routes;
 }

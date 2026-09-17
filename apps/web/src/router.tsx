@@ -9,6 +9,7 @@ import { Dashboard } from "./pages/Dashboard.tsx";
 import { Finance } from "./pages/Finance.tsx";
 import { LessonDetail } from "./pages/LessonDetail.tsx";
 import { Login } from "./pages/Login.tsx";
+import { Payroll } from "./pages/Payroll.tsx";
 import { SchoolLayout } from "./pages/SchoolLayout.tsx";
 import { Schools } from "./pages/Schools.tsx";
 import { Settings } from "./pages/Settings.tsx";
@@ -40,6 +41,7 @@ const teacherRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/pr
 const coursesRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/cursos", component: Courses });
 const courseRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/cursos/$courseId", component: CourseDetail });
 const financeRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/financeiro", component: Finance });
+const payrollRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/folha", component: Payroll });
 const settingsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/configuracoes", component: Settings });
 
 const routeTree = rootRoute.addChildren([
@@ -59,6 +61,7 @@ const routeTree = rootRoute.addChildren([
     coursesRoute,
     courseRoute,
     financeRoute,
+    payrollRoute,
     settingsRoute,
   ]),
 ]);

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { school, type RosterEntry } from "../api-school.ts";
-import { fmtLongDay, fmtTime, isoDay, todayIso } from "../lib/format.ts";
+import { school, SUPPORT_REASON_LABELS, type RosterEntry, type SupportReason } from "../api-school.ts";
+import { fmtLongDay, fmtTime, isoDay, money, parseReais, todayIso } from "../lib/format.ts";
 import { LessonStateBadge } from "../status.tsx";
 import { ActionError, Badge, ColorDot, LoadError, Loading, PageHead } from "../ui.tsx";
 
@@ -14,6 +14,10 @@ export function LessonDetail() {
   const [draft, setDraft] = useState<Record<string, "presente" | "falta">>({});
   const [reason, setReason] = useState("");
   const [newTeacher, setNewTeacher] = useState("");
+  const [supportReason, setSupportReason] = useState<SupportReason | "">("");
+  const [supportDetail, setSupportDetail] = useState("");
+  const [rate, setRate] = useState("");
+  const [rateReason, setRateReason] = useState("");
 
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ["lesson", slug, lessonId] }), qc.invalidateQueries({ queryKey: ["lessons", slug] })]);
   const action = useMutation({
@@ -146,6 +150,68 @@ export function LessonDetail() {
             </button>
           )}
           <ActionError error={action.error} />
+
+          {l.teacherId && l.state !== "cancelada" && isDayOrPast && (
+            <div className="subpanel stack">
+              <h3>Folha do professor</h3>
+              {l.supportReason ? (
+                <p className="small">
+                  <Badge tone="danger">Descontada da folha</Badge> Suporte pedido: {SUPPORT_REASON_LABELS[l.supportReason]}
+                  {l.supportDetail ? ` · ${l.supportDetail}` : ""}{" "}
+                  <button type="button" className="btn-link" onClick={() => action.mutate(() => school.requestSupport(slug, l.id, null))}>
+                    Retirar pedido
+                  </button>
+                </p>
+              ) : (
+                <div className="inline-form">
+                  <div className="field">
+                    <label htmlFor="support-reason">Pedido de suporte (desconta esta aula)</label>
+                    <select id="support-reason" value={supportReason} onChange={(e) => setSupportReason(e.target.value as SupportReason)}>
+                      <option value="">Motivo…</option>
+                      {Object.entries(SUPPORT_REASON_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="support-detail">Detalhe</label>
+                    <input id="support-detail" value={supportDetail} onChange={(e) => setSupportDetail(e.target.value)} />
+                  </div>
+                  <button type="button" className="btn" disabled={!supportReason || action.isPending} onClick={() => action.mutate(() => school.requestSupport(slug, l.id, supportReason as SupportReason, supportDetail))}>
+                    Registrar
+                  </button>
+                </div>
+              )}
+              {l.individual && (
+                <>
+                  {l.rateOverrideCents != null ? (
+                    <p className="small">
+                      Valor desta aula ajustado para {money(l.rateOverrideCents)} ({l.rateOverrideReason}){" "}
+                      <button type="button" className="btn-link" onClick={() => action.mutate(() => school.overrideRate(slug, l.id, null))}>
+                        Voltar ao valor da turma
+                      </button>
+                    </p>
+                  ) : (
+                    <div className="inline-form">
+                      <div className="field">
+                        <label htmlFor="rate-value">Alterar valor só desta aula (R$)</label>
+                        <input id="rate-value" inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} />
+                      </div>
+                      <div className="field">
+                        <label htmlFor="rate-reason">Motivo</label>
+                        <input id="rate-reason" value={rateReason} onChange={(e) => setRateReason(e.target.value)} />
+                      </div>
+                      <button type="button" className="btn" disabled={!rate || action.isPending} onClick={() => action.mutate(() => school.overrideRate(slug, l.id, parseReais(rate), rateReason))}>
+                        Alterar
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="panel stack">

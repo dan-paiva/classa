@@ -68,6 +68,7 @@ export type ClassGroup = {
   roomName: string | null;
   schedules: Schedule[];
   enrolled: number;
+  teacherRateCents: number | null;
 };
 
 export const LESSON_STATE_LABELS = {
@@ -106,6 +107,10 @@ export type Lesson = {
   present: number;
   absent: number;
   flags: { semProfessor: boolean; semAlunos: boolean; substituida: boolean };
+  rateOverrideCents: number | null;
+  rateOverrideReason: string | null;
+  supportReason: SupportReason | null;
+  supportDetail: string | null;
   myStatus?: AttendanceStatus | null;
   cancelledInTime?: boolean | null;
 };
@@ -208,7 +213,60 @@ export type FinanceSummary = {
   overdueCount: number;
   overdueStudents: number;
   portfolioCents: number;
+  payrollCostCents: number;
+  payrollStatus: MonthStatus;
+  marginCents: number;
 };
+
+export const SUPPORT_REASON_LABELS = {
+  pedagogico: "Pedagógico: conteúdo ou turma",
+  tecnico: "Técnico: plataforma, sala ou material",
+  comportamento: "Comportamento do aluno",
+  substituicao_parcial: "Substituição parcial durante a aula",
+  outro: "Outro",
+} as const;
+export type SupportReason = keyof typeof SUPPORT_REASON_LABELS;
+
+export type PayrollSituation = "paga" | "descontada" | "pendente" | "fora";
+export type PayrollLesson = {
+  lessonId: string;
+  startsAt: string;
+  className: string;
+  courseName: string;
+  state: LessonState;
+  situation: PayrollSituation;
+  valueCents: number;
+  minutes: number;
+  individual: boolean;
+  overridden: boolean;
+  supportReason: SupportReason | null;
+  substitute: boolean;
+  present: number;
+  absent: number;
+};
+export type PayrollLine = {
+  teacherId: string;
+  teacherName: string;
+  paidLessons: number;
+  discountedLessons: number;
+  pendingLessons: number;
+  minutes: number;
+  grossCents: number;
+  discountCents: number;
+  netCents: number;
+  lessons: PayrollLesson[];
+  lineId?: string;
+  paidOn?: string | null;
+};
+export type MonthStatus = "em_andamento" | "travada" | "pronta" | "fechada";
+export type Payroll = {
+  month: string;
+  status: MonthStatus;
+  period: { id: string; closedAt: string; netCents: number } | null;
+  lines: PayrollLine[];
+  totals: Omit<PayrollLine, "teacherId" | "teacherName" | "lessons">;
+};
+export type PayrollPeriod = { id: string; month: string; closedAt: string; netCents: number; lessons: number; reopenedAt: string | null; reopenJustification: string | null };
 
 export type GenerationResult = { created: number; existing: number; skipped: { date: string; startTime: string; reason: string }[]; conflicts: { date: string; startTime: string }[] };
 
@@ -282,4 +340,12 @@ export const school = {
   registerPayment: (slug: string, installmentId: string, input: { method: PaymentMethod; amountCents?: number; paidOn?: string }) =>
     request(`${t(slug)}/installments/${installmentId}/payments`, post(input)),
   reversePayment: (slug: string, paymentId: string, justification: string) => request(`${t(slug)}/payments/${paymentId}/reverse`, post({ justification })),
+
+  payroll: (slug: string, month: string) => request<{ payroll: Payroll; periods: PayrollPeriod[] }>(`${t(slug)}/payroll?month=${month}`),
+  closeMonth: (slug: string, month: string) => request(`${t(slug)}/payroll/${month}/close`, post()),
+  reopenMonth: (slug: string, month: string, justification: string) => request(`${t(slug)}/payroll/${month}/reopen`, post({ justification })),
+  markLinePaid: (slug: string, lineId: string, paidOn: string) => request(`${t(slug)}/payroll/lines/${lineId}/paid`, post({ paidOn })),
+  requestSupport: (slug: string, lessonId: string, reason: SupportReason | null, detail?: string) => request(`${t(slug)}/lessons/${lessonId}/support`, post({ reason, detail })),
+  overrideRate: (slug: string, lessonId: string, cents: number | null, reason = "") => request(`${t(slug)}/lessons/${lessonId}/rate`, post({ cents, reason })),
+  setTeacherRate: (slug: string, classGroupId: string, cents: number | null) => request(`${t(slug)}/class-groups/${classGroupId}/teacher-rate`, post({ cents })),
 };

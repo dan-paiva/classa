@@ -17,6 +17,7 @@ import { audit } from "../http/audit.ts";
 import { invalid, notFound, unprocessable } from "../http/errors.ts";
 import type { Db, ServiceContext } from "./context.ts";
 import { isQualified } from "./people.ts";
+import { assertMonthOpen } from "./payroll.ts";
 
 export async function getLessonRow(db: Db, ctx: ServiceContext, id: string) {
   const [row] = await db
@@ -55,6 +56,7 @@ export async function setAttendance(ctx: ServiceContext, lessonId: string, entri
   if (l.state === "cancelada") throw unprocessable("A aula foi cancelada.");
   if (l.state === "concluida") throw unprocessable("A aula já foi concluída.");
   if (dateInZone(l.startsAt, ctx.timezone) > dateInZone(ctx.now, ctx.timezone)) throw unprocessable("A lista de presença abre no dia da aula.");
+  await assertMonthOpen(ctx.db, ctx, l.startsAt);
   return ctx.db.transaction(async (tx) => {
     for (const e of entries) {
       const [row] = await tx
@@ -112,6 +114,7 @@ export async function concludeLesson(ctx: ServiceContext, lessonId: string) {
   if (l.state === "concluida") throw unprocessable("A aula já foi concluída.");
   if (dateInZone(l.startsAt, ctx.timezone) > dateInZone(ctx.now, ctx.timezone)) throw unprocessable("A aula ainda não aconteceu.");
   if (!l.teacherId) throw unprocessable("Defina o professor que deu a aula antes de concluir.");
+  await assertMonthOpen(ctx.db, ctx, l.startsAt);
   const roster = await ctx.db.select().from(lessonStudent).where(eq(lessonStudent.lessonId, l.id));
   const pending = roster.filter((r) => r.status === "inscrito");
   if (pending.length) throw unprocessable(`Marque presença ou falta de todos antes de concluir: falta${pending.length > 1 ? "m" : ""} ${pending.length}.`);
