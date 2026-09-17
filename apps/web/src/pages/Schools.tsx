@@ -41,7 +41,7 @@ export function Schools() {
             <ul className="list">
               {memberships.map((m) => (
                 <li key={m.tenantId}>
-                  <Link to="/e/$slug/cursos" params={{ slug: m.slug }} className="list-link">
+                  <Link to="/e/$slug" params={{ slug: m.slug }} className="list-link">
                     <strong>{m.name}</strong>
                     <span>administrador</span>
                   </Link>
@@ -83,7 +83,7 @@ function CreateSchool({ first }: { first: boolean }) {
     mutationFn: api.createTenant,
     onSuccess: async ({ tenant }) => {
       await queryClient.invalidateQueries({ queryKey: ["me"] });
-      navigate({ to: "/e/$slug/cursos", params: { slug: tenant.slug } });
+      navigate({ to: "/e/$slug", params: { slug: tenant.slug } });
     },
   });
   const issues = issuesOf(create.error);

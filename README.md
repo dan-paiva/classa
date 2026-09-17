@@ -6,7 +6,11 @@ Sistema de gestão escolar open source: alunos, matrículas, turmas, agenda de a
 
 ## Status
 
-Login, criação da escola e cadastro de cursos e módulos funcionando. Próximos: turmas, professores, alunos e matrículas. O plano completo está em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+Funciona hoje: login, escolas, cursos e módulos, professores (habilitação e disponibilidade), alunos, salas, feriados, turmas com geração de aulas, agenda semanal, presença e conclusão de aula, matrículas com extrato de créditos, contratos, parcelas, pagamentos, estorno e inadimplência automática.
+
+Próximos: folha de professores e fechamento do mês, empresas (B2B/B2B2C), leads e renovação, fluxos em kanban, perfis de acesso e convites.
+
+Regras de negócio em [docs/DOMINIO.md](docs/DOMINIO.md); arquitetura em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 
 ## Rodando localmente
 
@@ -23,6 +27,13 @@ pnpm dev           # API em :8787 e frontend em http://localhost:5173
 ```
 
 Abra http://localhost:5173, crie uma conta e depois a sua escola.
+
+Para uma escola de demonstração com dados inventados (professores, turmas, alunos, aulas, presença e financeiro):
+
+```bash
+pnpm db:seed            # entra com admin@demo.classa.dev / classa-demo-123
+pnpm db:seed -- --reset --member voce@exemplo.com   # recria e dá acesso também à sua conta local
+```
 
 Testes: `pnpm test`. Os testes usam PGlite (Postgres em memória) com as migrations reais e não precisam de Docker.
 

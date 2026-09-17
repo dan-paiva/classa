@@ -3,7 +3,16 @@ import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { api } from "../api.ts";
 import { authClient } from "../auth-client.ts";
 
-const SOON = ["Turmas", "Professores", "Alunos", "Matrículas"];
+const NAV = [
+  { to: "/e/$slug", label: "Início", exact: true },
+  { to: "/e/$slug/agenda", label: "Agenda" },
+  { to: "/e/$slug/turmas", label: "Turmas" },
+  { to: "/e/$slug/alunos", label: "Alunos" },
+  { to: "/e/$slug/professores", label: "Professores" },
+  { to: "/e/$slug/cursos", label: "Cursos" },
+  { to: "/e/$slug/financeiro", label: "Financeiro" },
+  { to: "/e/$slug/configuracoes", label: "Configurações" },
+] as const;
 
 export function SchoolLayout() {
   const { slug } = useParams({ from: "/e/$slug" });
@@ -31,13 +40,17 @@ export function SchoolLayout() {
         </Link>
         <div className="school-name">{school.name}</div>
         <nav aria-label="Menu da escola">
-          <Link to="/e/$slug/cursos" params={{ slug }} className="nav-link" activeProps={{ className: "nav-link active" }}>
-            Cursos
-          </Link>
-          {SOON.map((item) => (
-            <span key={item} className="nav-link disabled" aria-disabled="true">
-              {item} <em>em breve</em>
-            </span>
+          {NAV.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              params={{ slug }}
+              className="nav-link"
+              activeOptions={{ exact: "exact" in item }}
+              activeProps={{ className: "nav-link active" }}
+            >
+              {item.label}
+            </Link>
           ))}
         </nav>
         <div className="sidebar-foot">

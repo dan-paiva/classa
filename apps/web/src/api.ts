@@ -55,7 +55,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
     credentials: "include",
@@ -66,8 +66,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-const post = (body?: unknown): RequestInit => ({ method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
-const patch = (body: unknown): RequestInit => ({ method: "PATCH", body: JSON.stringify(body) });
+export const post = (body?: unknown): RequestInit => ({ method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+export const patch = (body: unknown): RequestInit => ({ method: "PATCH", body: JSON.stringify(body) });
 
 export const api = {
   me: () => request<Me>("/me"),
