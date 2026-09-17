@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "5.103.1",
+    "better-auth": "1.7.5",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

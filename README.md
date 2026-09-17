@@ -6,7 +6,7 @@ Sistema de gestão escolar open source: alunos, matrículas, turmas, agenda de a
 
 ## Status
 
-Fase 0 (fundação) em andamento. O plano completo está em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+Fase 0 (fundação): login com e-mail e senha e criação da escola funcionando. O plano completo está em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 
 ## Rodando localmente
 
@@ -16,15 +16,15 @@ Requisitos: Node 24 e Docker.
 corepack enable
 pnpm install
 cp .env.example .env
+cp apps/api/.dev.vars.example apps/api/.dev.vars   # troque o BETTER_AUTH_SECRET (openssl rand -base64 32)
 pnpm dev:up        # Postgres 17 + Mailpit
 pnpm db:migrate    # aplica as migrations
-pnpm build         # gera o frontend servido pelo Worker
-pnpm --filter @classa/api dev   # http://localhost:8787
+pnpm dev           # API em :8787 e frontend em http://localhost:5173
 ```
 
-Para desenvolver o frontend com recarga automática, rode também `pnpm --filter @classa/web dev` (http://localhost:5173).
+Abra http://localhost:5173, crie uma conta e depois a sua escola.
 
-Testes: `pnpm test`. Os testes de banco usam PGlite (Postgres em memória) e não precisam de Docker.
+Testes: `pnpm test`. Os testes usam PGlite (Postgres em memória) com as migrations reais e não precisam de Docker.
 
 ## Stack
 
