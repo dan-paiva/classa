@@ -3,7 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { issuesOf } from "../api.ts";
 import { school } from "../api-school.ts";
-import { addDaysIso, fmtIsoDate, fmtShortDate, fmtTime, fmtWeekday, scheduleLabel, todayIso } from "../lib/format.ts";
+import { addDaysIso, money, parseReais, fmtIsoDate, fmtShortDate, fmtTime, fmtWeekday, scheduleLabel, todayIso } from "../lib/format.ts";
 import { plural } from "../lib/format.ts";
 import { LessonStateBadge, StudentStatusBadge, UsageBar } from "../status.tsx";
 import { ActionError, Badge, ColorDot, Field, FormError, LoadError, Loading, PageHead } from "../ui.tsx";
@@ -87,6 +87,22 @@ export function ClassGroupDetail() {
           <span className="stat-label">Modalidade</span>
           <strong className="stat-value small-value">{g.modality === "online" ? "Online" : "Presencial"}</strong>
         </div>
+        {g.individual && (
+          <div className="stat">
+            <span className="stat-label">Valor por aula (professor)</span>
+            <strong className="stat-value small-value">{money(g.teacherRateCents ?? 12000)}</strong>
+            <button
+              type="button"
+              className="btn-link small"
+              onClick={() => {
+                const v = prompt("Valor pago ao professor por aula (R$)", ((g.teacherRateCents ?? 12000) / 100).toFixed(2).replace(".", ","));
+                if (v) school.setTeacherRate(slug, g.id, parseReais(v)).then(() => qc.invalidateQueries({ queryKey: ["class-group", slug, classGroupId] }));
+              }}
+            >
+              Alterar
+            </button>
+          </div>
+        )}
       </div>
 
       <section className="panel stack">

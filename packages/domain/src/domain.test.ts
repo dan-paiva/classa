@@ -143,3 +143,30 @@ describe("parcelas", () => {
     expect(daysLate("2026-09-10", "2026-09-26")).toBe(16);
   });
 });
+
+import { lessonPayValue, monthStatus, nextMonthStart, payrollSituation } from "./payroll.ts";
+
+describe("folha", () => {
+  it("situação da aula", () => {
+    expect(payrollSituation({ state: "concluida", teacherId: "t", supportReason: null })).toBe("paga");
+    expect(payrollSituation({ state: "concluida", teacherId: "t", supportReason: "tecnico" })).toBe("descontada");
+    expect(payrollSituation({ state: "nao_finalizada", teacherId: "t", supportReason: null })).toBe("pendente");
+    expect(payrollSituation({ state: "cancelada", teacherId: "t", supportReason: null })).toBe("fora");
+    expect(payrollSituation({ state: "concluida", teacherId: null, supportReason: null })).toBe("fora");
+  });
+
+  it("valor: particular fixo, grupo por hora, ajuste vence", () => {
+    expect(lessonPayValue({ individual: true, classRateCents: null, overrideCents: null, hourlyRateCents: 9000, minutes: 60 })).toBe(12000);
+    expect(lessonPayValue({ individual: true, classRateCents: 15000, overrideCents: null, hourlyRateCents: null, minutes: 60 })).toBe(15000);
+    expect(lessonPayValue({ individual: false, classRateCents: null, overrideCents: null, hourlyRateCents: 7000, minutes: 45 })).toBe(5250);
+    expect(lessonPayValue({ individual: true, classRateCents: 15000, overrideCents: 9000, hourlyRateCents: null, minutes: 60 })).toBe(9000);
+  });
+
+  it("competência", () => {
+    expect(monthStatus("2026-09", "2026-09-17", 0, false)).toBe("em_andamento");
+    expect(monthStatus("2026-08", "2026-09-17", 2, false)).toBe("travada");
+    expect(monthStatus("2026-08", "2026-09-17", 0, false)).toBe("pronta");
+    expect(monthStatus("2026-08", "2026-09-17", 0, true)).toBe("fechada");
+    expect(nextMonthStart("2026-12")).toBe("2027-01-01");
+  });
+});

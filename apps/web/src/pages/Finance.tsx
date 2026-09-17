@@ -55,6 +55,8 @@ export function Finance() {
         <Stat label="A receber no mês" value={s ? money(s.dueThisMonthOpenCents) : "…"} hint={s ? `de ${money(s.dueThisMonthCents)} com vencimento no mês` : undefined} />
         <Stat label="Vencido em aberto" value={s ? money(s.overdueCents) : "…"} tone={s?.overdueCents ? "danger" : undefined} hint={s ? `${s.overdueCount} parcelas · ${s.overdueStudents} alunos` : undefined} />
         <Stat label="Receita reconhecida" value={s ? money(s.recognizedCents) : "…"} hint={s ? `${s.concludedLessons} aulas concluídas` : undefined} />
+        <Stat label="Custo de professores" value={s ? money(s.payrollCostCents) : "…"} hint={s ? (s.payrollStatus === "fechada" ? "folha fechada" : "folha ainda aberta") : undefined} />
+        <Stat label="Margem" value={s ? money(s.marginCents) : "…"} tone={s && s.marginCents < 0 ? "danger" : undefined} hint="receita reconhecida − custo" />
         <Stat label="Carteira a reconhecer" value={s ? money(s.portfolioCents) : "…"} hint="saldo de aulas × valor da aula" />
       </div>
 

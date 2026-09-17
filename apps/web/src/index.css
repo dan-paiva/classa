@@ -231,3 +231,4 @@ tr.is-off td { color: var(--muted); }
 .pay-form select, .pay-form input { width: auto; max-width: 150px; padding: 5px 8px; }
 .payments { display: grid; gap: 4px; justify-items: end; margin-top: 4px; }
 .cell-actions { display: inline-flex; gap: 12px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+tr.detail-row > td { background: var(--ground); padding: 8px 14px 14px; }
