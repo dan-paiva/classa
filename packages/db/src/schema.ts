@@ -579,3 +579,85 @@ export const lessonStudent = pgTable(
   },
   (t) => [unique("lesson_student_uq").on(t.lessonId, t.enrollmentId), index("lesson_student_student_idx").on(t.studentId)],
 );
+
+/* ---------------------------------------------------------------------------
+ * Financeiro: contrato por matrícula, parcelas e pagamentos
+ * ------------------------------------------------------------------------- */
+
+/** Emitido e gravado: mudar o valor da aula depois não altera contrato nem parcelas. */
+export const contract = pgTable(
+  "contract",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    enrollmentId: uuid("enrollment_id")
+      .notNull()
+      .references(() => enrollment.id),
+    kind: text("kind", { enum: ["matricula", "renovacao"] }).notNull().default("matricula"),
+    lessons: integer("lessons").notNull(),
+    lessonPriceCents: integer("lesson_price_cents").notNull(),
+    discountCents: integer("discount_cents").notNull().default(0),
+    totalCents: integer("total_cents").notNull(),
+    installmentsCount: integer("installments_count").notNull(),
+    dueDay: integer("due_day").notNull(),
+    issuedOn: date("issued_on").notNull(),
+    cancelledAt: tstz("cancelled_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("contract_total_non_negative", sql`${t.totalCents} >= 0`),
+    check("contract_installments_positive", sql`${t.installmentsCount} between 1 and 24`),
+    check("contract_due_day", sql`${t.dueDay} between 1 and 28`),
+    index("contract_enrollment_idx").on(t.enrollmentId),
+  ],
+);
+
+export const installment = pgTable(
+  "installment",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    contractId: uuid("contract_id")
+      .notNull()
+      .references(() => contract.id),
+    number: integer("number").notNull(),
+    dueDate: date("due_date").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    cancelledAt: tstz("cancelled_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    unique("installment_contract_number_uq").on(t.contractId, t.number),
+    check("installment_amount_non_negative", sql`${t.amountCents} >= 0`),
+    index("installment_tenant_due_idx").on(t.tenantId, t.dueDate),
+  ],
+);
+
+export const PAYMENT_METHODS = ["pix", "cartao_credito", "cartao_debito", "boleto", "transferencia", "dinheiro"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/** Pagamento nunca é apagado: estorno é outro registro, negativo, apontando para o original. */
+export const payment = pgTable(
+  "payment",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    installmentId: uuid("installment_id")
+      .notNull()
+      .references(() => installment.id),
+    amountCents: integer("amount_cents").notNull(),
+    method: text("method", { enum: PAYMENT_METHODS }).notNull(),
+    paidOn: date("paid_on").notNull(),
+    reversalOfId: uuid("reversal_of_id"),
+    justification: text("justification"),
+    actorId: text("actor_id"),
+    createdAt: createdAt(),
+  },
+  (t) => [check("payment_amount_not_zero", sql`${t.amountCents} <> 0`), index("payment_installment_idx").on(t.installmentId)],
+);

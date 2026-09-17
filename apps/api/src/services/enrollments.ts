@@ -23,6 +23,7 @@ import { audit } from "../http/audit.ts";
 import { invalid, notFound, unprocessable } from "../http/errors.ts";
 import type { Db, ServiceContext, Tx } from "./context.ts";
 import { getStudentRow } from "./people.ts";
+import { cancelFutureInstallmentsTx, issueContractTx } from "./finance.ts";
 import { getClassGroupRow } from "./schedule.ts";
 
 const today = (ctx: ServiceContext) => dateInZone(ctx.now, ctx.timezone);
@@ -66,7 +67,16 @@ async function removeFromFutureLessons(db: Db, ctx: ServiceContext, enrollmentId
 
 export async function createEnrollment(
   ctx: ServiceContext,
-  input: { studentId: string; classGroupId: string; packageLessons?: number; startsOn?: string; endsOn?: string; modality?: Modality },
+  input: {
+    studentId: string;
+    classGroupId: string;
+    packageLessons?: number;
+    startsOn?: string;
+    endsOn?: string;
+    modality?: Modality;
+    /** Emite o contrato com parcelas (padrão true). */
+    contract?: false | { discountCents?: number; installments?: number; dueDay?: number };
+  },
 ) {
   const s = await getStudentRow(ctx.db, ctx, input.studentId);
   if (["cancelado", "inativo"].includes(s.status)) throw unprocessable("Aluno cancelado ou inativo não pode ser matriculado. Reative o aluno antes.");
@@ -94,6 +104,7 @@ export async function createEnrollment(
     await tx.insert(creditEntry).values({ tenantId: ctx.tenantId, enrollmentId: e!.id, kind: "contratacao", amount: packageLessons, actorId: ctx.actorId });
     const lessons = await enrollInLessons(tx, ctx, e!);
     await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "enrollment", entityId: e!.id, action: "create", after: { ...e, lessons } });
+    if (input.contract !== false) await issueContractTx(tx, ctx, e!.id, input.contract ?? {});
     return e!;
   });
 }
@@ -112,6 +123,7 @@ export async function endEnrollmentTx(tx: Tx, ctx: ServiceContext, id: string) {
   if (before.endedAt) return before;
   const [row] = await tx.update(enrollment).set({ endedAt: ctx.now }).where(eq(enrollment.id, id)).returning();
   await removeFromFutureLessons(tx, ctx, id);
+  await cancelFutureInstallmentsTx(tx, ctx, id);
   await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "enrollment", entityId: id, action: "deactivate", before, after: row });
   return row!;
 }
