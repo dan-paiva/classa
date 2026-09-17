@@ -50,6 +50,21 @@ function normalizePerson(input: PersonInput) {
 /** Cria a pessoa. E-mail ou CPF repetido vira 409 com o id da pessoa que já existe. */
 async function insertPerson(db: Db, ctx: ServiceContext, input: PersonInput) {
   const values = normalizePerson(input);
+  // checa antes de inserir, na mesma conexão/transação (a constraint única continua garantindo)
+  for (const field of ["cpf", "email"] as const) {
+    const value = values[field];
+    if (!value) continue;
+    const [existing] = await db
+      .select({ id: person.id, name: person.name })
+      .from(person)
+      .where(and(eq(person.tenantId, ctx.tenantId), field === "cpf" ? eq(person.cpf, value) : sql`lower(${person.email}) = ${value}`));
+    if (existing) {
+      throw new DomainError(409, "person_exists", `Já existe uma pessoa com este ${field === "cpf" ? "CPF" : "e-mail"}: ${existing.name}.`, {
+        [field]: ["Já cadastrado"],
+        existingPersonId: [existing.id],
+      });
+    }
+  }
   try {
     const [row] = await db
       .insert(person)
@@ -57,23 +72,11 @@ async function insertPerson(db: Db, ctx: ServiceContext, input: PersonInput) {
       .returning();
     return row!;
   } catch (err) {
-    if (!isUniqueViolation(err)) throw err;
-    const field = pgConstraint(err) === "person_tenant_cpf_uq" ? "cpf" : "email";
-    const [existing] = await ctx.db
-      .select({ id: person.id, name: person.name })
-      .from(person)
-      .where(
-        and(
-          eq(person.tenantId, ctx.tenantId),
-          field === "cpf" ? eq(person.cpf, values.cpf!) : sql`lower(${person.email}) = ${values.email}`,
-        ),
-      );
-    throw new DomainError(
-      409,
-      "person_exists",
-      `Já existe uma pessoa com este ${field === "cpf" ? "CPF" : "e-mail"}${existing ? `: ${existing.name}` : ""}.`,
-      { [field]: ["Já cadastrado"], existingPersonId: existing ? [existing.id] : [] },
-    );
+    if (isUniqueViolation(err)) {
+      const field = pgConstraint(err) === "person_tenant_cpf_uq" ? "cpf" : "email";
+      throw conflict(field, `Já existe uma pessoa com este ${field === "cpf" ? "CPF" : "e-mail"}.`);
+    }
+    throw err;
   }
 }
 

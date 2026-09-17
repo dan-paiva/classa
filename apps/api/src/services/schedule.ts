@@ -229,7 +229,7 @@ export async function getClassGroupRow(db: Db, ctx: ServiceContext, id: string) 
 }
 
 /** Turmas com curso, módulo, professor, sala, horários e ocupação. */
-export async function listClassGroups(ctx: ServiceContext, filters: { courseId?: string; teacherId?: string } = {}) {
+export async function listClassGroups(ctx: ServiceContext, filters: { id?: string; courseId?: string; teacherId?: string } = {}) {
   const rows = await ctx.db
     .select({
       classGroup,
@@ -249,6 +249,7 @@ export async function listClassGroups(ctx: ServiceContext, filters: { courseId?:
     .where(
       and(
         eq(classGroup.tenantId, ctx.tenantId),
+        filters.id ? eq(classGroup.id, filters.id) : undefined,
         filters.courseId ? eq(classGroup.courseId, filters.courseId) : undefined,
         filters.teacherId ? eq(classGroup.teacherId, filters.teacherId) : undefined,
       ),
@@ -366,7 +367,7 @@ export async function generateLessons(ctx: ServiceContext, classGroupId: string,
 /** Aulas de um intervalo, com nomes e contagem de inscritos e presenças. */
 export async function listLessons(
   ctx: ServiceContext,
-  filters: { from: Date; to: Date; teacherId?: string; classGroupId?: string; courseId?: string; studentId?: string },
+  filters: { from: Date; to: Date; id?: string; teacherId?: string; classGroupId?: string; courseId?: string; studentId?: string },
 ) {
   const originalPerson = sql<string | null>`(select p2.name from teacher t2 join person p2 on p2.id = t2.person_id where t2.id = ${lesson.originalTeacherId})`;
   const rows = await ctx.db
@@ -397,8 +398,8 @@ export async function listLessons(
     .where(
       and(
         eq(lesson.tenantId, ctx.tenantId),
-        gte(lesson.startsAt, filters.from),
-        lt(lesson.startsAt, filters.to),
+        filters.id ? eq(lesson.id, filters.id) : gte(lesson.startsAt, filters.from),
+        filters.id ? undefined : lt(lesson.startsAt, filters.to),
         filters.teacherId ? eq(lesson.teacherId, filters.teacherId) : undefined,
         filters.classGroupId ? eq(lesson.classGroupId, filters.classGroupId) : undefined,
         filters.courseId ? eq(lesson.courseId, filters.courseId) : undefined,
