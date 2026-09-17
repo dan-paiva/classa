@@ -14,7 +14,8 @@
     "dev:down": "docker compose -f infra/docker-compose.yml down",
     "db:generate": "pnpm --filter @classa/db generate",
     "db:migrate": "pnpm --filter @classa/db migrate",
-    "db:migrate:prod": "pnpm --filter @classa/db migrate:prod"
+    "db:migrate:prod": "pnpm --filter @classa/db migrate:prod",
+    "db:seed": "pnpm --filter @classa/api seed"
   },
   "devDependencies": {
     "@neon/config": "^1.5.0",
