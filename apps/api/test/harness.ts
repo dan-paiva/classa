@@ -7,7 +7,9 @@ export const BASE_URL = "http://localhost:8787";
 /** App completo sobre um Postgres em memória, com as migrations reais aplicadas. */
 export async function createTestApp() {
   const database = await createTestDb();
-  const auth = createAuth({ db: database, secret: "test-secret-with-at-least-32-characters!!", baseURL: BASE_URL });
+  // segredo aleatório por execução: nada fixo no repositório
+  const secret = `${crypto.randomUUID()}${crypto.randomUUID()}`;
+  const auth = createAuth({ db: database, secret, baseURL: BASE_URL });
   const app = createApp(() => ({ db: database, auth }));
 
   const call = (path: string, init: RequestInit & { cookie?: string } = {}) => {
