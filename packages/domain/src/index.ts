@@ -9,3 +9,4 @@ export * from "./finance.ts";
 export * from "./payroll.ts";
 export * from "./company.ts";
 export * from "./workflows.ts";
+export * from "./access.ts";

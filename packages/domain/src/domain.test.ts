@@ -222,3 +222,42 @@ describe("fluxos", () => {
     expect(missingRequired(FLOWS.admissao, { name: "" })).toEqual(["name"]);
   });
 });
+
+import { can, permissionMap, ROLE_PRESETS } from "./access.ts";
+
+describe("acesso", () => {
+  const preset = (key: string) => ROLE_PRESETS.find((r) => r.key === key)!.profile;
+
+  it("admin faz tudo; aluno nada no backoffice", () => {
+    expect(can(preset("diretoria"), "usuarios", "administrar")).toBe(true);
+    expect(can(preset("aluno"), "agenda", "ver")).toBe(false);
+  });
+
+  it("professor só vê e opera a agenda", () => {
+    const p = preset("professor");
+    expect(can(p, "agenda", "operar")).toBe(true);
+    expect(can(p, "alunos", "ver")).toBe(false);
+    expect(can(p, "financeiro", "ver")).toBe(false);
+  });
+
+  it("área restrita só vê; nível limita a ação", () => {
+    const coord = preset("coord_ped");
+    expect(can(coord, "professores", "editar")).toBe(true);
+    expect(can(coord, "alunos", "ver")).toBe(true); // aca restrito
+    expect(can(coord, "alunos", "editar")).toBe(false);
+    expect(can(coord, "financeiro", "ver")).toBe(false);
+    expect(can(coord, "usuarios", "administrar")).toBe(false);
+
+    const consultor = preset("consultor"); // nível 4
+    expect(can(consultor, "leads", "operar")).toBe(true);
+    expect(can(consultor, "leads", "editar")).toBe(false);
+    expect(can(consultor, "empresas", "inativar")).toBe(false);
+  });
+
+  it("mapa de permissões para o menu", () => {
+    const m = permissionMap(preset("financeiro"));
+    expect(m.financeiro).toEqual(["ver", "operar", "editar"]);
+    expect(m.leads).toEqual([]);
+    expect(m.alunos).toEqual(["ver"]);
+  });
+});

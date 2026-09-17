@@ -14,7 +14,7 @@ import {
 } from "@classa/db";
 import { cancelledInTime, creditForAttendance, dateInZone, fitsAvailability, weekdayOf } from "@classa/domain";
 import { audit } from "../http/audit.ts";
-import { invalid, notFound, unprocessable } from "../http/errors.ts";
+import { DomainError, invalid, notFound, unprocessable } from "../http/errors.ts";
 import type { Db, ServiceContext } from "./context.ts";
 import { isQualified } from "./people.ts";
 import { assertMonthOpen } from "./payroll.ts";
@@ -26,6 +26,13 @@ export async function getLessonRow(db: Db, ctx: ServiceContext, id: string) {
     .where(and(eq(lesson.id, id), eq(lesson.tenantId, ctx.tenantId)));
   if (!row) throw notFound("Aula");
   return row;
+}
+
+/** Professor só age nas próprias aulas (inclusive as que assumiu como substituto). */
+export async function assertOwnLesson(ctx: ServiceContext, teacherId: string | null, lessonId: string) {
+  const l = await getLessonRow(ctx.db, ctx, lessonId);
+  if (!teacherId || l.teacherId !== teacherId) throw new DomainError(404, "not_found", "Aula não encontrada.");
+  return l;
 }
 
 const isToday = (ctx: ServiceContext, d: Date) => dateInZone(d, ctx.timezone) === dateInZone(ctx.now, ctx.timezone);

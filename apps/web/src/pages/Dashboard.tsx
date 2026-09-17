@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, Navigate, useParams } from "@tanstack/react-router";
+import { useMembership } from "../lib/permissions.ts";
 import { school } from "../api-school.ts";
 import { addDaysIso, fmtShortDate, fmtTime, fmtWeekday, money, todayIso } from "../lib/format.ts";
 import { LessonStateBadge, UsageBar } from "../status.tsx";
@@ -7,6 +8,15 @@ import { ColorDot, Empty, Loading, PageHead, Stat } from "../ui.tsx";
 
 export function Dashboard() {
   const { slug } = useParams({ strict: false }) as { slug: string };
+  const membership = useMembership();
+  if (membership?.profileType === "aluno") return <Navigate to="/e/$slug/minha-area" params={{ slug }} replace />;
+  if (membership && membership.profileType !== "admin" && !(membership.permissions.financeiro ?? []).includes("ver")) {
+    return <Navigate to="/e/$slug/agenda" params={{ slug }} replace />;
+  }
+  return <DashboardContent slug={slug} />;
+}
+
+function DashboardContent({ slug }: { slug: string }) {
   const today = todayIso();
   const month = today.slice(0, 7);
 

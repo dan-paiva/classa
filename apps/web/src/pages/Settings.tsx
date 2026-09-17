@@ -5,12 +5,14 @@ import { issuesOf } from "../api.ts";
 import { ROOM_KIND_LABELS, school, type Room } from "../api-school.ts";
 import { fmtIsoDate, todayIso } from "../lib/format.ts";
 import { Badge, Field, FormError, Loading, PageHead } from "../ui.tsx";
+import { Team } from "./Team.tsx";
 
 export function Settings() {
   const { slug } = useParams({ strict: false }) as { slug: string };
   return (
     <div className="stack-lg">
-      <PageHead title="Configurações" subtitle="Salas e calendário da escola." />
+      <PageHead title="Configurações" subtitle="Equipe e acessos, salas e calendário da escola." />
+      <Team />
       <div className="grid-2">
         <Rooms slug={slug} />
         <Holidays slug={slug} />

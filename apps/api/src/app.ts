@@ -1,14 +1,18 @@
-import type { Database, MembershipRole, TenantSettings } from "@classa/db";
+import type { AreaAccessMap, Database, MembershipRole, TenantSettings } from "@classa/db";
+import type { ProfileType } from "@classa/domain";
 import { Hono } from "hono";
 import type { Auth } from "./auth.ts";
 import { DomainError } from "./http/errors.ts";
+import { requireTenant } from "./http/require-tenant.ts";
 import { pgErrorCode } from "./http/pg-errors.ts";
 import { companyRoutes } from "./modules/companies/routes.ts";
 import { courseRoutes } from "./modules/courses/routes.ts";
 import { financeRoutes } from "./modules/finance/routes.ts";
 import { payrollRoutes } from "./modules/payroll/routes.ts";
 import { peopleRoutes } from "./modules/people/routes.ts";
+import { portalRoutes } from "./modules/portal/routes.ts";
 import { scheduleRoutes } from "./modules/schedule/routes.ts";
+import { invitationRoutes, userRoutes } from "./modules/users/routes.ts";
 import { workflowRoutes } from "./modules/workflows/routes.ts";
 import { tenantRoutes } from "./modules/tenants/routes.ts";
 
@@ -21,6 +25,14 @@ export type TenantContext = {
   role: MembershipRole;
   timezone: string;
   settings: TenantSettings;
+  membershipId: string;
+  profileType: ProfileType;
+  level: number;
+  areas: AreaAccessMap;
+  personId: string | null;
+  /** Professor e aluno ligados à pessoa do usuário, para o escopo "próprio". */
+  teacherId: string | null;
+  studentId: string | null;
 };
 
 export type AppVariables = {
@@ -61,6 +73,9 @@ export function createApp(resolve: (env: unknown) => Services) {
 
   app.on(["GET", "POST"], "/auth/*", (c) => c.var.auth.handler(c.req.raw));
 
+  // toda rota da escola passa uma única vez pela checagem de vínculo e perfil
+  app.use("/t/:slug/*", requireTenant);
+
   app.onError((err, c) => {
     if (err instanceof DomainError) {
       return c.json({ error: err.code, message: err.message, issues: err.issues }, err.status);
@@ -76,13 +91,16 @@ export function createApp(resolve: (env: unknown) => Services) {
   const routes = app
     .get("/health", (c) => c.json({ status: "ok", service: "classa-api" }))
     .route("/", tenantRoutes)
+    .route("/", invitationRoutes)
     .route("/t/:slug", courseRoutes)
     .route("/t/:slug", peopleRoutes)
     .route("/t/:slug", scheduleRoutes)
     .route("/t/:slug", financeRoutes)
     .route("/t/:slug", payrollRoutes)
     .route("/t/:slug", companyRoutes)
-    .route("/t/:slug", workflowRoutes);
+    .route("/t/:slug", workflowRoutes)
+    .route("/t/:slug", userRoutes)
+    .route("/t/:slug", portalRoutes);
 
   return routes;
 }

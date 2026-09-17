@@ -7,6 +7,7 @@ import { addDaysIso, fmtIsoDate, fmtTime, isoDay, mondayOf, todayIso, WEEKDAYS }
 import { plural } from "../lib/format.ts";
 import { LessonStateBadge } from "../status.tsx";
 import { ColorDot, LoadError, Loading, PageHead } from "../ui.tsx";
+import { useCan, useMembership } from "../lib/permissions.ts";
 
 export function Agenda() {
   const { slug } = useParams({ strict: false }) as { slug: string };
@@ -21,8 +22,12 @@ export function Agenda() {
     queryKey: ["lessons", slug, week, teacherId, courseId],
     queryFn: () => school.lessons(slug, { from, to, teacherId: teacherId || undefined, courseId: courseId || undefined }),
   });
-  const teachers = useQuery({ queryKey: ["teachers", slug], queryFn: () => school.teachers(slug) });
-  const courses = useQuery({ queryKey: ["courses", slug], queryFn: () => api.courses(slug) });
+  const membership = useMembership();
+  const ownOnly = membership?.profileType === "prestador";
+  const canSeeTeachers = useCan("professores");
+  const canSeeCourses = useCan("cursos");
+  const teachers = useQuery({ queryKey: ["teachers", slug], queryFn: () => school.teachers(slug), enabled: canSeeTeachers });
+  const courses = useQuery({ queryKey: ["courses", slug], queryFn: () => api.courses(slug), enabled: canSeeCourses });
 
   const days = Array.from({ length: 6 }, (_, i) => addDaysIso(week, i));
   const byDay = new Map<string, Lesson[]>();
@@ -37,7 +42,7 @@ export function Agenda() {
   return (
     <div className="stack-lg">
       <PageHead
-        title="Agenda"
+        title={ownOnly ? "Minhas aulas" : "Agenda"}
         subtitle={`Semana de ${fmtIsoDate(week)} a ${fmtIsoDate(addDaysIso(week, 5))}`}
         actions={
           <>
@@ -55,6 +60,7 @@ export function Agenda() {
       />
 
       <div className="toolbar">
+        {canSeeTeachers && (
         <select aria-label="Professor" value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>
           <option value="">Todos os professores</option>
           {teachers.data?.teachers.map((t) => (
@@ -63,6 +69,8 @@ export function Agenda() {
             </option>
           ))}
         </select>
+        )}
+        {canSeeCourses && (
         <select aria-label="Curso" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
           <option value="">Todos os cursos</option>
           {courses.data?.courses.map((c) => (
@@ -71,6 +79,7 @@ export function Agenda() {
             </option>
           ))}
         </select>
+        )}
         <label className="check" htmlFor="show-cancelled">
           <input id="show-cancelled" type="checkbox" checked={showCancelled} onChange={(e) => setShowCancelled(e.target.checked)} />
           Mostrar canceladas

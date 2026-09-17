@@ -1,4 +1,5 @@
 import { and, auditLog, eq, isNull, membership, tenant } from "@classa/db";
+import { permissionMap } from "@classa/domain";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
@@ -19,12 +20,24 @@ export const tenantRoutes = new Hono<AppEnv>()
   .get("/me", requireUser, async (c) => {
     const user = c.var.user!;
     const escolas = await c.var.db
-      .select({ tenantId: tenant.id, name: tenant.name, slug: tenant.slug, role: membership.role })
+      .select({
+        tenantId: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        role: membership.role,
+        profileType: membership.profileType,
+        level: membership.level,
+        areas: membership.areas,
+        status: membership.status,
+      })
       .from(membership)
       .innerJoin(tenant, eq(tenant.id, membership.tenantId))
       .where(and(eq(membership.userId, user.id), isNull(membership.deactivatedAt), isNull(tenant.deactivatedAt)))
       .orderBy(tenant.name);
-    return c.json({ user, memberships: escolas });
+    return c.json({
+      user,
+      memberships: escolas.map((m) => ({ ...m, permissions: permissionMap({ profileType: m.profileType, level: m.level, areas: m.areas }) })),
+    });
   })
   .post("/tenants", requireUser, async (c) => {
     const parsed = createTenantInput.safeParse(await c.req.json().catch(() => null));

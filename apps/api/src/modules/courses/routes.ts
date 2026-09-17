@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
 import { audit } from "../../http/audit.ts";
 import { isUniqueViolation } from "../../http/pg-errors.ts";
-import { requireAdmin, requireTenant } from "../../http/require-tenant.ts";
+import {authorize} from "../../http/require-tenant.ts";
 import { parseBody } from "../../http/validation.ts";
 import { allowsModules, defaultRules } from "./domain.ts";
 
@@ -57,9 +57,8 @@ async function listModules(db: Database, courseId: string) {
 }
 
 export const courseRoutes = new Hono<AppEnv>()
-  .use("*", requireTenant)
 
-  .get("/courses", async (c) => {
+  .get("/courses", authorize("cursos", "ver"), async (c) => {
     const { db, tenant } = c.var;
     const courses = await db.select().from(course).where(eq(course.tenantId, tenant.id)).orderBy(asc(course.name));
     const modules = await db
@@ -72,13 +71,13 @@ export const courseRoutes = new Hono<AppEnv>()
     });
   })
 
-  .get("/courses/:id", async (c) => {
+  .get("/courses/:id", authorize("cursos", "ver"), async (c) => {
     const found = await findCourse(c.var.db, c.var.tenant.id, c.req.param("id"));
     if (!found) return c.json(notFound, 404);
     return c.json({ course: { ...found, modules: await listModules(c.var.db, found.id) } });
   })
 
-  .post("/courses", requireAdmin, async (c) => {
+  .post("/courses", authorize("cursos", "editar"), async (c) => {
     const { data, error } = await parseBody(c, createCourseInput);
     if (error) return error;
     const { db, tenant, user } = c.var;
@@ -110,7 +109,7 @@ export const courseRoutes = new Hono<AppEnv>()
     }
   })
 
-  .patch("/courses/:id", requireAdmin, async (c) => {
+  .patch("/courses/:id", authorize("cursos", "editar"), async (c) => {
     const { db, tenant, user } = c.var;
     const found = await findCourse(db, tenant.id, c.req.param("id"));
     if (!found) return c.json(notFound, 404);
@@ -133,7 +132,7 @@ export const courseRoutes = new Hono<AppEnv>()
     }
   })
 
-  .post("/courses/:id/:action{deactivate|reactivate}", requireAdmin, async (c) => {
+  .post("/courses/:id/:action{deactivate|reactivate}", authorize("cursos", "inativar"), async (c) => {
     const { db, tenant, user } = c.var;
     const found = await findCourse(db, tenant.id, c.req.param("id"));
     if (!found) return c.json(notFound, 404);
@@ -148,7 +147,7 @@ export const courseRoutes = new Hono<AppEnv>()
     return c.json({ course: { ...updated, modules: await listModules(db, found.id) } });
   })
 
-  .post("/courses/:id/modules", requireAdmin, async (c) => {
+  .post("/courses/:id/modules", authorize("cursos", "editar"), async (c) => {
     const { db, tenant, user } = c.var;
     const found = await findCourse(db, tenant.id, c.req.param("id"));
     if (!found) return c.json(notFound, 404);
@@ -181,7 +180,7 @@ export const courseRoutes = new Hono<AppEnv>()
     }
   })
 
-  .patch("/courses/:id/modules/:moduleId", requireAdmin, async (c) => {
+  .patch("/courses/:id/modules/:moduleId", authorize("cursos", "editar"), async (c) => {
     const { db, tenant, user } = c.var;
     const moduleId = c.req.param("moduleId");
     const found = await findCourse(db, tenant.id, c.req.param("id"));
@@ -207,7 +206,7 @@ export const courseRoutes = new Hono<AppEnv>()
     }
   })
 
-  .post("/courses/:id/modules/:moduleId/:action{deactivate|reactivate}", requireAdmin, async (c) => {
+  .post("/courses/:id/modules/:moduleId/:action{deactivate|reactivate}", authorize("cursos", "inativar"), async (c) => {
     const { db, tenant, user } = c.var;
     const moduleId = c.req.param("moduleId");
     const found = await findCourse(db, tenant.id, c.req.param("id"));

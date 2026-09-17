@@ -252,3 +252,7 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); bord
 .kanban-col, .kcard { min-width: 0; }
 .kcard { overflow-wrap: anywhere; }
 .kcard .small { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.areas-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 16px; }
+.area-choice { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-size: 14px; font-weight: 400; }
+.area-choice select { width: auto; }
+.subpanel h3 { font-size: 15px; }

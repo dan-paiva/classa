@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
 import { isoDate, uuid } from "../../http/query.ts";
-import { requireAdmin, requireTenant } from "../../http/require-tenant.ts";
+import {authorize} from "../../http/require-tenant.ts";
 import { parseBody } from "../../http/validation.ts";
 import { contextFrom } from "../../services/context.ts";
 import {
@@ -20,10 +20,9 @@ import { financeSummary, listInstallments, listPayments, refreshDelinquency, reg
 const STATUS = ["a_vencer", "vencida", "paga", "cancelada"] as const;
 
 export const financeRoutes = new Hono<AppEnv>()
-  .use("*", requireTenant)
 
   /* ----------------------------------------------------------------- matrículas */
-  .get("/enrollments", async (c) =>
+  .get("/enrollments", authorize("alunos", "ver"), async (c) =>
     c.json({
       enrollments: await listEnrollments(contextFrom(c), {
         studentId: c.req.query("studentId") || undefined,
@@ -33,7 +32,7 @@ export const financeRoutes = new Hono<AppEnv>()
     }),
   )
 
-  .post("/enrollments", requireAdmin, async (c) => {
+  .post("/enrollments", authorize("alunos", "editar"), async (c) => {
     const { data, error } = await parseBody(
       c,
       z.object({
@@ -50,18 +49,18 @@ export const financeRoutes = new Hono<AppEnv>()
     return c.json({ enrollment: await createEnrollment(contextFrom(c), data) }, 201);
   })
 
-  .post("/enrollments/:id/end", requireAdmin, async (c) => c.json({ enrollment: await endEnrollment(contextFrom(c), c.req.param("id")) }))
-  .post("/enrollments/:id/reactivate", requireAdmin, async (c) => c.json({ enrollment: await reactivateEnrollment(contextFrom(c), c.req.param("id")) }))
+  .post("/enrollments/:id/end", authorize("alunos", "inativar"), async (c) => c.json({ enrollment: await endEnrollment(contextFrom(c), c.req.param("id")) }))
+  .post("/enrollments/:id/reactivate", authorize("alunos", "inativar"), async (c) => c.json({ enrollment: await reactivateEnrollment(contextFrom(c), c.req.param("id")) }))
 
-  .post("/enrollments/:id/transfer", requireAdmin, async (c) => {
+  .post("/enrollments/:id/transfer", authorize("alunos", "editar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ classGroupId: uuid }));
     if (error) return error;
     return c.json({ enrollment: await transferEnrollment(contextFrom(c), c.req.param("id"), data.classGroupId) });
   })
 
-  .get("/enrollments/:id/credits", async (c) => c.json({ entries: await ledger(contextFrom(c), c.req.param("id")) }))
+  .get("/enrollments/:id/credits", authorize("alunos", "ver"), async (c) => c.json({ entries: await ledger(contextFrom(c), c.req.param("id")) }))
 
-  .post("/enrollments/:id/credits", requireAdmin, async (c) => {
+  .post("/enrollments/:id/credits", authorize("financeiro", "editar"), async (c) => {
     const { data, error } = await parseBody(
       c,
       z.object({ kind: z.enum(["ajuste", "promocional", "renovacao"]), amount: z.number({ error: "Informe a quantidade" }).int(), justification: z.string().optional() }),
@@ -71,14 +70,14 @@ export const financeRoutes = new Hono<AppEnv>()
   })
 
   /* ------------------------------------------------------------------ financeiro */
-  .get("/finance/summary", async (c) => {
+  .get("/finance/summary", authorize("financeiro", "ver"), async (c) => {
     const ctx = contextFrom(c);
     await refreshDelinquency(ctx);
     const month = c.req.query("month") ?? new Date().toISOString().slice(0, 7);
     return c.json({ summary: await financeSummary(ctx, month) });
   })
 
-  .get("/installments", async (c) => {
+  .get("/installments", authorize("financeiro", "ver"), async (c) => {
     const status = c.req.query("status");
     return c.json({
       installments: await listInstallments(contextFrom(c), {
@@ -90,9 +89,9 @@ export const financeRoutes = new Hono<AppEnv>()
     });
   })
 
-  .get("/installments/:id/payments", async (c) => c.json({ payments: await listPayments(contextFrom(c), c.req.param("id")) }))
+  .get("/installments/:id/payments", authorize("financeiro", "ver"), async (c) => c.json({ payments: await listPayments(contextFrom(c), c.req.param("id")) }))
 
-  .post("/installments/:id/payments", requireAdmin, async (c) => {
+  .post("/installments/:id/payments", authorize("financeiro", "operar"), async (c) => {
     const { data, error } = await parseBody(
       c,
       z.object({ method: z.enum(PAYMENT_METHODS, { error: "Escolha a forma de pagamento" }), amountCents: z.number().int().positive().optional(), paidOn: isoDate.optional() }),
@@ -101,7 +100,7 @@ export const financeRoutes = new Hono<AppEnv>()
     return c.json({ payment: await registerPayment(contextFrom(c), c.req.param("id"), data) }, 201);
   })
 
-  .post("/payments/:id/reverse", requireAdmin, async (c) => {
+  .post("/payments/:id/reverse", authorize("financeiro", "inativar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ justification: z.string({ error: "Informe a justificativa" }) }));
     if (error) return error;
     return c.json({ payment: await reversePayment(contextFrom(c), c.req.param("id"), data.justification) }, 201);

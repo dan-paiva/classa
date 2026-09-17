@@ -8,7 +8,9 @@ Sistema de gestão escolar open source: alunos, matrículas, turmas, agenda de a
 
 Funciona hoje: login, escolas, cursos e módulos, professores (habilitação e disponibilidade), alunos, salas, feriados, turmas com geração de aulas, agenda semanal, presença e conclusão de aula, matrículas com extrato de créditos, contratos, parcelas, pagamentos, estorno e inadimplência automática.
 
-Próximos: folha de professores e fechamento do mês, empresas (B2B/B2B2C), leads e renovação, fluxos em kanban, perfis de acesso e convites.
+Também: folha de professores e fechamento do mês, empresas B2B/B2B2C com cobrança, leads, fluxos em kanban (substituição, nível, reposição, admissão, cobrança, renovação, retenção, campanhas), perfis de acesso por nível e área, convites e áreas do professor e do aluno.
+
+Próximos: auditoria e relatórios, e o importador do protótipo (uso local).
 
 Regras de negócio em [docs/DOMINIO.md](docs/DOMINIO.md); arquitetura em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 
@@ -32,6 +34,7 @@ Para uma escola de demonstração com dados inventados (professores, turmas, alu
 
 ```bash
 pnpm db:seed            # entra com admin@demo.classa.dev / classa-demo-123
+# outros perfis (mesma senha): coordenacao@, financeiro@, professor@ e aluno@demo.classa.dev
 pnpm db:seed -- --reset --member voce@exemplo.com   # recria e dá acesso também à sua conta local
 ```
 

@@ -1,5 +1,17 @@
 export type Role = "admin";
-export type Membership = { tenantId: string; name: string; slug: string; role: Role };
+export type ProfileType = "admin" | "colaborador" | "prestador" | "aluno";
+export type Membership = {
+  tenantId: string;
+  name: string;
+  slug: string;
+  role: Role;
+  profileType: ProfileType;
+  level: number;
+  areas: Record<string, "total" | "restrito">;
+  status: "ativo" | "bloqueado";
+  /** recurso → ações permitidas (calculado no servidor) */
+  permissions: Record<string, string[]>;
+};
 export type Me = { user: { id: string; name: string; email: string }; memberships: Membership[] };
 export type FieldIssues = Record<string, string[] | undefined>;
 
@@ -70,6 +82,8 @@ export const post = (body?: unknown): RequestInit => ({ method: "POST", body: bo
 export const patch = (body: unknown): RequestInit => ({ method: "PATCH", body: JSON.stringify(body) });
 
 export const api = {
+  invitation: (token: string) => request<{ schoolName: string; email: string; profileType: ProfileType; hasAccount: boolean; expiresAt: string }>(`/invitations/${token}`),
+  acceptInvitation: (token: string) => request<{ slug: string }>(`/invitations/${token}/accept`, post()),
   me: () => request<Me>("/me"),
   createTenant: (input: { name: string; slug: string }) =>
     request<{ tenant: { id: string; name: string; slug: string } }>("/tenants", post(input)),
