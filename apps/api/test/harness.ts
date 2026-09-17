@@ -34,5 +34,15 @@ export async function createTestApp() {
     return cookie;
   };
 
-  return { app, db: database, call, signUp };
+  /** Cria conta + escola e devolve helpers já autenticados naquela escola. */
+  const adminOf = async (slug: string) => {
+    const cookie = await signUp(`admin@${slug}.classa.dev`, `Admin ${slug}`);
+    const res = await call("/api/tenants", { method: "POST", cookie, body: JSON.stringify({ name: `Escola ${slug}`, slug }) });
+    if (res.status !== 201) throw new Error(`criar escola falhou: ${res.status} ${await res.text()}`);
+    const json = (path: string, method = "GET", body?: unknown) =>
+      call(`/api/t/${slug}${path}`, { method, cookie, body: body === undefined ? undefined : JSON.stringify(body) });
+    return { cookie, json };
+  };
+
+  return { app, db: database, call, signUp, adminOf };
 }
