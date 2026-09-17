@@ -13,7 +13,14 @@ export const requireTenant = createMiddleware<AppEnv>(async (c, next) => {
   if (!slug) return c.json({ error: "not_found" }, 404);
 
   const [row] = await c.var.db
-    .select({ id: tenant.id, name: tenant.name, slug: tenant.slug, role: membership.role })
+    .select({
+      id: tenant.id,
+      name: tenant.name,
+      slug: tenant.slug,
+      role: membership.role,
+      timezone: tenant.timezone,
+      settings: tenant.settings,
+    })
     .from(tenant)
     .innerJoin(membership, eq(membership.tenantId, tenant.id))
     .where(

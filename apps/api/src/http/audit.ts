@@ -6,7 +6,7 @@ export async function audit(
   tx: Tx | Database,
   entry: {
     tenantId: string;
-    actorId: string;
+    actorId: string | null;
     entity: string;
     entityId: string;
     action: AuditAction;
