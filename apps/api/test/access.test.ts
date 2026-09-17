@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { createTestApp } from "./harness.ts";
+import { createTestApp, TEST_PASSWORD } from "./harness.ts";
 
 let t: Awaited<ReturnType<typeof createTestApp>>;
 let admin: Awaited<ReturnType<Awaited<ReturnType<typeof createTestApp>>["adminOf"]>>;
@@ -76,7 +76,7 @@ const as = (cookie: string, path: string, method = "GET", payload?: unknown) =>
 
 describe("perfis de acesso", () => {
   it("sem convite, a lista de e-mails continua barrando o cadastro", async () => {
-    const res = await t.call("/api/auth/sign-up/email", { method: "POST", body: JSON.stringify({ email: "intruso@x.dev", name: "X", password: "senha-bem-longa-123" }) });
+    const res = await t.call("/api/auth/sign-up/email", { method: "POST", body: JSON.stringify({ email: "intruso@x.dev", name: "X", password: TEST_PASSWORD }) });
     expect(res.status).toBe(403);
   });
 

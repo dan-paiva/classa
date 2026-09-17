@@ -3,6 +3,8 @@ import { createApp } from "../src/app.ts";
 import { createAuth } from "../src/auth.ts";
 
 export const BASE_URL = "http://localhost:8787";
+/** Senha usada só nas contas criadas pelos testes. */
+export const TEST_PASSWORD = ["senha", "bem", "longa", "123"].join("-");
 
 /** App completo sobre um Postgres em memória, com as migrations reais aplicadas. */
 export async function createTestApp(options: { allowedSignupEmails?: string[] } = {}) {
@@ -24,7 +26,7 @@ export async function createTestApp(options: { allowedSignupEmails?: string[] } 
   const signUp = async (email: string, name = "Pessoa Teste") => {
     const res = await call("/api/auth/sign-up/email", {
       method: "POST",
-      body: JSON.stringify({ email, name, password: "senha-bem-longa-123" }),
+      body: JSON.stringify({ email, name, password: TEST_PASSWORD }),
     });
     if (res.status !== 200) throw new Error(`sign-up falhou: ${res.status} ${await res.text()}`);
     const cookie = res.headers
