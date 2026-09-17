@@ -9,6 +9,7 @@ const NAV = [
   { to: "/e/$slug/turmas", label: "Turmas" },
   { to: "/e/$slug/alunos", label: "Alunos" },
   { to: "/e/$slug/professores", label: "Professores" },
+  { to: "/e/$slug/empresas", label: "Empresas" },
   { to: "/e/$slug/cursos", label: "Cursos" },
   { to: "/e/$slug/financeiro", label: "Financeiro" },
   { to: "/e/$slug/folha", label: "Folha" },

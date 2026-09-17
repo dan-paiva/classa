@@ -7,3 +7,4 @@ export * from "./time.ts";
 export * from "./types.ts";
 export * from "./finance.ts";
 export * from "./payroll.ts";
+export * from "./company.ts";

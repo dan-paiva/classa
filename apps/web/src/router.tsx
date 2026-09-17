@@ -3,6 +3,7 @@ import { authClient } from "./auth-client.ts";
 import { Agenda } from "./pages/Agenda.tsx";
 import { ClassGroupDetail } from "./pages/ClassGroupDetail.tsx";
 import { ClassGroups } from "./pages/ClassGroups.tsx";
+import { Companies, CompanyDetail } from "./pages/Companies.tsx";
 import { CourseDetail } from "./pages/CourseDetail.tsx";
 import { Courses } from "./pages/Courses.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
@@ -42,6 +43,8 @@ const coursesRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/cu
 const courseRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/cursos/$courseId", component: CourseDetail });
 const financeRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/financeiro", component: Finance });
 const payrollRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/folha", component: Payroll });
+const companiesRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/empresas", component: Companies });
+const companyRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/empresas/$companyId", component: CompanyDetail });
 const settingsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/configuracoes", component: Settings });
 
 const routeTree = rootRoute.addChildren([
@@ -62,6 +65,8 @@ const routeTree = rootRoute.addChildren([
     courseRoute,
     financeRoute,
     payrollRoute,
+    companiesRoute,
+    companyRoute,
     settingsRoute,
   ]),
 ]);

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import type { Auth } from "./auth.ts";
 import { DomainError } from "./http/errors.ts";
 import { pgErrorCode } from "./http/pg-errors.ts";
+import { companyRoutes } from "./modules/companies/routes.ts";
 import { courseRoutes } from "./modules/courses/routes.ts";
 import { financeRoutes } from "./modules/finance/routes.ts";
 import { payrollRoutes } from "./modules/payroll/routes.ts";
@@ -78,7 +79,8 @@ export function createApp(resolve: (env: unknown) => Services) {
     .route("/t/:slug", peopleRoutes)
     .route("/t/:slug", scheduleRoutes)
     .route("/t/:slug", financeRoutes)
-    .route("/t/:slug", payrollRoutes);
+    .route("/t/:slug", payrollRoutes)
+    .route("/t/:slug", companyRoutes);
 
   return routes;
 }
