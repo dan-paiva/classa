@@ -469,13 +469,16 @@ Estes itens eram só dado de demonstração ou sorteio e não viram regra nem s�
 - números fixos dos painéis;
 - "hoje" fixo na base de aulas particulares.
 
-O importador (`pnpm import:prototipo`, local) traz só:
-- cursos, módulos e turmas, com horários e vagas;
-- salas;
-- professores, com habilitações e disponibilidade;
-- alunos, com empresa e disponibilidade;
-- matrículas, com pacote e aulas já usadas como um lançamento de ajuste inicial;
-- empresas e contratos B2B.
+O importador (`pnpm import:prototipo -- <arquivo.html> --escola <slug>`, local) traz só:
+- horário de funcionamento e feriados;
+- cursos e módulos (as regras do curso — vagas, duração, pacote e preço — entram com o padrão do Classa, porque o arquivo não as tem);
+- salas (a virtual precisa do link da reunião, que o arquivo não guarda: passe `--link-sala-virtual` ou crie à mão);
+- professores, com as habilitações (o arquivo não traz disponibilidade nem valor da hora);
+- empresas (sem valor de licença nem aulas contratadas, que o arquivo não traz);
+- alunos, com empresa;
+- matrículas, quando já existe no Classa a turma do curso e módulo, com o pacote e as aulas já usadas como um lançamento de ajuste inicial.
+
+Turma não é importada: no protótipo o horário, o dia, a sala e o professor da oferta são sorteados. CPF e CNPJ do arquivo são de exemplo e não passam na validação, então entram vazios. Tudo o que ficou de fora vai para um relatório de pendências gravado ao lado do arquivo lido, nunca no repositório.
 
 ## Decisões em aberto
 
