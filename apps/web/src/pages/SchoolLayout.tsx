@@ -6,9 +6,11 @@ import { authClient } from "../auth-client.ts";
 const NAV = [
   { to: "/e/$slug", label: "Início", exact: true },
   { to: "/e/$slug/agenda", label: "Agenda" },
+  { to: "/e/$slug/acoes", label: "Ações" },
   { to: "/e/$slug/turmas", label: "Turmas" },
   { to: "/e/$slug/alunos", label: "Alunos" },
   { to: "/e/$slug/professores", label: "Professores" },
+  { to: "/e/$slug/leads", label: "Leads" },
   { to: "/e/$slug/empresas", label: "Empresas" },
   { to: "/e/$slug/cursos", label: "Cursos" },
   { to: "/e/$slug/financeiro", label: "Financeiro" },

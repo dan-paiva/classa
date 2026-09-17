@@ -9,6 +9,7 @@ import { financeRoutes } from "./modules/finance/routes.ts";
 import { payrollRoutes } from "./modules/payroll/routes.ts";
 import { peopleRoutes } from "./modules/people/routes.ts";
 import { scheduleRoutes } from "./modules/schedule/routes.ts";
+import { workflowRoutes } from "./modules/workflows/routes.ts";
 import { tenantRoutes } from "./modules/tenants/routes.ts";
 
 export type SessionUser = { id: string; name: string; email: string };
@@ -80,7 +81,8 @@ export function createApp(resolve: (env: unknown) => Services) {
     .route("/t/:slug", scheduleRoutes)
     .route("/t/:slug", financeRoutes)
     .route("/t/:slug", payrollRoutes)
-    .route("/t/:slug", companyRoutes);
+    .route("/t/:slug", companyRoutes)
+    .route("/t/:slug", workflowRoutes);
 
   return routes;
 }

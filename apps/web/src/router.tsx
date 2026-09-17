@@ -8,6 +8,8 @@ import { CourseDetail } from "./pages/CourseDetail.tsx";
 import { Courses } from "./pages/Courses.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
 import { Finance } from "./pages/Finance.tsx";
+import { Flows } from "./pages/Flows.tsx";
+import { Leads } from "./pages/Leads.tsx";
 import { LessonDetail } from "./pages/LessonDetail.tsx";
 import { Login } from "./pages/Login.tsx";
 import { Payroll } from "./pages/Payroll.tsx";
@@ -45,6 +47,8 @@ const financeRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/fi
 const payrollRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/folha", component: Payroll });
 const companiesRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/empresas", component: Companies });
 const companyRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/empresas/$companyId", component: CompanyDetail });
+const leadsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/leads", component: Leads });
+const flowsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/acoes", component: Flows });
 const settingsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/configuracoes", component: Settings });
 
 const routeTree = rootRoute.addChildren([
@@ -65,6 +69,8 @@ const routeTree = rootRoute.addChildren([
     courseRoute,
     financeRoute,
     payrollRoute,
+    leadsRoute,
+    flowsRoute,
     companiesRoute,
     companyRoute,
     settingsRoute,

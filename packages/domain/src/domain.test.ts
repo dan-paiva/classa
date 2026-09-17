@@ -200,3 +200,25 @@ describe("empresas", () => {
     expect(a.map((x) => x.tone)).toEqual(["danger", "danger", "warn", "warn", "danger"]);
   });
 });
+
+import { checkRequires, FLOWS, missingRequired, transitionPath } from "./workflows.ts";
+
+describe("fluxos", () => {
+  const sub = FLOWS.substituicao;
+  it("pular etapas atravessa as intermediárias; alternativa e volta não", () => {
+    const r = transitionPath(sub, "pedido", "concluido");
+    expect(r.ok && r.path.map((s) => s.key)).toEqual(["buscando", "confirmado", "concluido"]);
+    const alt = transitionPath(sub, "buscando", "cancelado");
+    expect(alt.ok && alt.path.map((s) => s.key)).toEqual(["cancelado"]);
+    const back = transitionPath(sub, "confirmado", "pedido");
+    expect(back.ok && back.path).toEqual([]);
+    expect(transitionPath(sub, "concluido", "buscando").ok).toBe(false);
+    expect(transitionPath(sub, "concluido", "pedido").ok).toBe(true);
+  });
+
+  it("requisitos da etapa e dos campos", () => {
+    expect(checkRequires(sub.stages[2]!, {}, sub)).toBe("Para Confirmado, preencha: Substituto.");
+    expect(checkRequires(sub.stages[2]!, { substituteId: "x" }, sub)).toBeNull();
+    expect(missingRequired(FLOWS.admissao, { name: "" })).toEqual(["name"]);
+  });
+});
