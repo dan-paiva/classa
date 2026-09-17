@@ -1,0 +1,20 @@
+{
+  "name": "classa",
+  "private": true,
+  "packageManager": "pnpm@12.4.2",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "dev:up": "docker compose -f infra/docker-compose.yml up -d",
+    "dev:down": "docker compose -f infra/docker-compose.yml down",
+    "db:generate": "pnpm --filter @classa/db generate",
+    "db:migrate": "pnpm --filter @classa/db migrate"
+  },
+  "devDependencies": {
+    "turbo": "2.10.13",
+    "typescript": "7.0.2"
+  }
+}
