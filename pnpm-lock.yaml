@@ -184,6 +184,9 @@ importers:
       '@classa/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@classa/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       better-auth:
         specifier: 1.7.5
         version: 1.7.5(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(@cloudflare/workers-types@5.20260917.1)(@electric-sql/pglite@0.5.8)(kysely@0.29.6)(postgres@3.4.9))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(vitest@5.0.1(@types/node@22.20.3)(vite@8.3.0(@types/node@22.20.3)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)))
@@ -262,6 +265,12 @@ importers:
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@22.20.3)(vite@8.3.0(@types/node@22.20.3)(esbuild@0.28.2)(tsx@4.23.13))
+
+  packages/domain:
+    devDependencies:
       vitest:
         specifier: 5.0.1
         version: 5.0.1(@types/node@22.20.3)(vite@8.3.0(@types/node@22.20.3)(esbuild@0.28.2)(tsx@4.23.13))

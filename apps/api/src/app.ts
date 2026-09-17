@@ -1,12 +1,21 @@
-import type { Database, MembershipRole } from "@classa/db";
+import type { Database, MembershipRole, TenantSettings } from "@classa/db";
 import { Hono } from "hono";
 import type { Auth } from "./auth.ts";
+import { DomainError } from "./http/errors.ts";
+import { pgErrorCode } from "./http/pg-errors.ts";
 import { courseRoutes } from "./modules/courses/routes.ts";
 import { tenantRoutes } from "./modules/tenants/routes.ts";
 
 export type SessionUser = { id: string; name: string; email: string };
 
-export type TenantContext = { id: string; name: string; slug: string; role: MembershipRole };
+export type TenantContext = {
+  id: string;
+  name: string;
+  slug: string;
+  role: MembershipRole;
+  timezone: string;
+  settings: TenantSettings;
+};
 
 export type AppVariables = {
   db: Database;
@@ -45,6 +54,18 @@ export function createApp(resolve: (env: unknown) => Services) {
   });
 
   app.on(["GET", "POST"], "/auth/*", (c) => c.var.auth.handler(c.req.raw));
+
+  app.onError((err, c) => {
+    if (err instanceof DomainError) {
+      return c.json({ error: err.code, message: err.message, issues: err.issues }, err.status);
+    }
+    const pg = pgErrorCode(err);
+    if (pg === "23P01") {
+      return c.json({ error: "conflict", message: "Choque de horário: professor ou sala já tem aula nesse horário." }, 409);
+    }
+    console.error(err);
+    return c.json({ error: "internal", message: "Erro inesperado. Tente de novo." }, 500);
+  });
 
   const routes = app
     .get("/health", (c) => c.json({ status: "ok", service: "classa-api" }))

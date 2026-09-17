@@ -15,6 +15,20 @@
       "when": 1789653203951,
       "tag": "0001_hot_ares",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789656373043,
+      "tag": "0002_cloudy_lord_hawal",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789656383428,
+      "tag": "0003_lesson_no_overlap",
+      "breakpoints": true
     }
   ]
 }

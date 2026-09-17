@@ -1,5 +1,21 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  date,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  primaryKey,
+  smallint,
+  text,
+  time,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { uuidv7 } from "uuidv7";
 
 const id = () => uuid("id").primaryKey().$defaultFn(() => uuidv7());
@@ -83,12 +99,44 @@ export const authVerification = pgTable(
  * Escolas e vínculo de usuários
  * ------------------------------------------------------------------------- */
 
+export type OperatingDay = { weekday: number; open: string; close: string } | { weekday: number; closed: true };
+
+export type TenantSettings = {
+  /** weekday: 0 = domingo … 6 = sábado. Horas em "HH:MM". */
+  operatingHours: OperatingDay[];
+  policies: {
+    /** Falta sem aviso gasta a aula (decisão D2). */
+    noShowDebits: boolean;
+    /** Cancelar depois da antecedência mínima do curso gasta a aula (decisão D2). */
+    lateCancelDebits: boolean;
+    /** Parcela vencida há mais que isso deixa o aluno inadimplente (decisão D8). */
+    delinquencyDays: number;
+    installments: number;
+    dueDay: number;
+  };
+};
+
+export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
+  operatingHours: [
+    { weekday: 0, closed: true },
+    { weekday: 1, open: "07:00", close: "22:00" },
+    { weekday: 2, open: "07:00", close: "22:00" },
+    { weekday: 3, open: "07:00", close: "22:00" },
+    { weekday: 4, open: "07:00", close: "22:00" },
+    { weekday: 5, open: "07:00", close: "22:00" },
+    { weekday: 6, open: "08:00", close: "13:00" },
+  ],
+  policies: { noShowDebits: true, lateCancelDebits: true, delinquencyDays: 15, installments: 6, dueDay: 10 },
+};
+
 /** A escola. Toda tabela de negócio aponta para um tenant. */
 export const tenant = pgTable("tenant", {
   id: id(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   timezone: text("timezone").notNull().default("America/Sao_Paulo"),
+  /** Horário de funcionamento e políticas da escola. Formato em `TenantSettings`. */
+  settings: jsonb("settings").$type<TenantSettings>().notNull().default(DEFAULT_TENANT_SETTINGS),
   createdAt: createdAt(),
   deactivatedAt: tstz("deactivated_at"),
 });
@@ -117,7 +165,7 @@ export const membership = pgTable(
   (t) => [unique("membership_tenant_user_uq").on(t.tenantId, t.userId), index("membership_user_idx").on(t.userId)],
 );
 
-export const AUDIT_ACTIONS = ["create", "update", "deactivate", "reactivate", "delete"] as const;
+export const AUDIT_ACTIONS = ["create", "update", "deactivate", "reactivate", "delete", "cancel", "import", "transition"] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** Histórico append-only de alterações. Nunca recebe UPDATE nem DELETE. */
@@ -203,4 +251,331 @@ export const courseModule = pgTable(
     deactivatedAt: tstz("deactivated_at"),
   },
   (t) => [unique("course_module_course_name_uq").on(t.courseId, t.name), index("course_module_course_idx").on(t.courseId)],
+);
+
+/* ---------------------------------------------------------------------------
+ * Pessoas: ficha única, professor e aluno
+ * ------------------------------------------------------------------------- */
+
+export const person = pgTable(
+  "person",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    name: text("name").notNull(),
+    email: text("email"),
+    /** Só dígitos. */
+    cpf: text("cpf"),
+    /** Só dígitos. */
+    phone: text("phone"),
+    birthDate: date("birth_date"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("person_tenant_email_uq").on(t.tenantId, sql`lower(${t.email})`).where(sql`${t.email} is not null`),
+    uniqueIndex("person_tenant_cpf_uq").on(t.tenantId, t.cpf).where(sql`${t.cpf} is not null`),
+    index("person_tenant_name_idx").on(t.tenantId, t.name),
+  ],
+);
+
+/**
+ * Disponibilidade semanal em horas cheias: cada valor é weekday * 100 + hora
+ * (ex.: 118 = segunda às 18h). weekday 1..6, hora 7..21.
+ */
+const availability = () => smallint("availability").array().notNull().default(sql`'{}'::smallint[]`);
+
+export const teacher = pgTable(
+  "teacher",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => person.id),
+    /** Aulas por semana; passar dele é só aviso. */
+    weeklyLimit: integer("weekly_limit").notNull().default(24),
+    hourlyRateCents: integer("hourly_rate_cents"),
+    availability: availability(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deactivatedAt: tstz("deactivated_at"),
+  },
+  (t) => [unique("teacher_person_uq").on(t.personId), check("teacher_weekly_limit_positive", sql`${t.weeklyLimit} > 0`)],
+);
+
+/** Habilitação: professor pode dar aula no curso; `moduleIds` null = todos os módulos/turmas. */
+export const teacherCourse = pgTable(
+  "teacher_course",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    teacherId: uuid("teacher_id")
+      .notNull()
+      .references(() => teacher.id),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => course.id),
+    moduleIds: uuid("module_ids").array(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.teacherId, t.courseId] })],
+);
+
+export const STUDENT_STATUSES = ["ativo", "suspenso", "congelado", "inadimplente", "cancelado", "inativo"] as const;
+export type StudentStatus = (typeof STUDENT_STATUSES)[number];
+
+export const student = pgTable(
+  "student",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => person.id),
+    status: text("status", { enum: STUDENT_STATUSES }).notNull().default("ativo"),
+    /** Situação antes de desativar ou cancelar, para reativar voltando a ela. */
+    previousStatus: text("previous_status", { enum: STUDENT_STATUSES }),
+    availability: availability(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [unique("student_person_uq").on(t.personId), index("student_tenant_status_idx").on(t.tenantId, t.status)],
+);
+
+/* ---------------------------------------------------------------------------
+ * Agenda: salas, turmas, horários, feriados e aulas
+ * ------------------------------------------------------------------------- */
+
+export const ROOM_KINDS = ["virtual", "presencial", "auditorio"] as const;
+export type RoomKind = (typeof ROOM_KINDS)[number];
+
+export const room = pgTable(
+  "room",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: ROOM_KINDS }).notNull(),
+    link: text("link"),
+    capacity: integer("capacity"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deactivatedAt: tstz("deactivated_at"),
+  },
+  (t) => [unique("room_tenant_name_uq").on(t.tenantId, t.name)],
+);
+
+/** Turma: o que se repete toda semana e gera as aulas. Aula particular = turma individual de 1 vaga. */
+export const classGroup = pgTable(
+  "class_group",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => course.id),
+    moduleId: uuid("module_id").references(() => courseModule.id),
+    name: text("name").notNull(),
+    teacherId: uuid("teacher_id").references(() => teacher.id),
+    roomId: uuid("room_id").references(() => room.id),
+    modality: text("modality", { enum: MODALITIES }).notNull(),
+    capacity: integer("capacity").notNull(),
+    individual: boolean("individual").notNull().default(false),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deactivatedAt: tstz("deactivated_at"),
+  },
+  (t) => [
+    unique("class_group_course_name_uq").on(t.courseId, t.name),
+    check("class_group_capacity_positive", sql`${t.capacity} > 0`),
+    check("class_group_period", sql`${t.endsOn} >= ${t.startsOn}`),
+    index("class_group_tenant_idx").on(t.tenantId),
+  ],
+);
+
+export const classSchedule = pgTable(
+  "class_schedule",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    classGroupId: uuid("class_group_id")
+      .notNull()
+      .references(() => classGroup.id, { onDelete: "cascade" }),
+    /** 1 = segunda … 6 = sábado. */
+    weekday: smallint("weekday").notNull(),
+    startTime: time("start_time").notNull(),
+  },
+  (t) => [
+    unique("class_schedule_slot_uq").on(t.classGroupId, t.weekday, t.startTime),
+    check("class_schedule_weekday", sql`${t.weekday} between 1 and 6`),
+  ],
+);
+
+export const HOLIDAY_KINDS = ["nacional", "manual", "recesso"] as const;
+
+export const holiday = pgTable(
+  "holiday",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    date: date("date").notNull(),
+    name: text("name").notNull(),
+    kind: text("kind", { enum: HOLIDAY_KINDS }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [unique("holiday_tenant_date_uq").on(t.tenantId, t.date)],
+);
+
+export const LESSON_STATES = ["agendada", "em_andamento", "concluida", "nao_finalizada", "cancelada"] as const;
+export type LessonState = (typeof LESSON_STATES)[number];
+
+export const lesson = pgTable(
+  "lesson",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    classGroupId: uuid("class_group_id")
+      .notNull()
+      .references(() => classGroup.id),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => course.id),
+    moduleId: uuid("module_id").references(() => courseModule.id),
+    startsAt: tstz("starts_at").notNull(),
+    endsAt: tstz("ends_at").notNull(),
+    teacherId: uuid("teacher_id").references(() => teacher.id),
+    /** Preenchido quando outro professor assumiu a aula. */
+    originalTeacherId: uuid("original_teacher_id").references(() => teacher.id),
+    roomId: uuid("room_id").references(() => room.id),
+    state: text("state", { enum: LESSON_STATES }).notNull().default("agendada"),
+    cancelReason: text("cancel_reason"),
+    notes: text("notes"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique("lesson_class_start_uq").on(t.classGroupId, t.startsAt),
+    check("lesson_period", sql`${t.endsAt} > ${t.startsAt}`),
+    index("lesson_tenant_starts_idx").on(t.tenantId, t.startsAt),
+    index("lesson_teacher_starts_idx").on(t.teacherId, t.startsAt),
+  ],
+);
+
+/* ---------------------------------------------------------------------------
+ * Matrícula, extrato de créditos e inscrição nas aulas
+ * ------------------------------------------------------------------------- */
+
+export const enrollment = pgTable(
+  "enrollment",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => student.id),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => course.id),
+    classGroupId: uuid("class_group_id")
+      .notNull()
+      .references(() => classGroup.id),
+    modality: text("modality", { enum: MODALITIES }).notNull(),
+    packageLessons: integer("package_lessons").notNull(),
+    startsOn: date("starts_on").notNull(),
+    endsOn: date("ends_on").notNull(),
+    endedAt: tstz("ended_at"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check("enrollment_package_positive", sql`${t.packageLessons} > 0`),
+    check("enrollment_period", sql`${t.endsOn} >= ${t.startsOn}`),
+    index("enrollment_student_idx").on(t.studentId),
+    index("enrollment_class_idx").on(t.classGroupId),
+  ],
+);
+
+export const CREDIT_KINDS = [
+  "contratacao",
+  "renovacao",
+  "promocional",
+  "devolucao",
+  "presenca",
+  "falta",
+  "cancelamento_tardio",
+  "expiracao",
+  "ajuste",
+  "estorno",
+] as const;
+export type CreditKind = (typeof CREDIT_KINDS)[number];
+
+/** Extrato de créditos: saldo da matrícula = soma de `amount`. Lançamentos nunca mudam. */
+export const creditEntry = pgTable(
+  "credit_entry",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    enrollmentId: uuid("enrollment_id")
+      .notNull()
+      .references(() => enrollment.id),
+    kind: text("kind", { enum: CREDIT_KINDS }).notNull(),
+    amount: integer("amount").notNull(),
+    lessonId: uuid("lesson_id").references(() => lesson.id),
+    reversalOfId: uuid("reversal_of_id"),
+    justification: text("justification"),
+    actorId: text("actor_id"),
+    createdAt: createdAt(),
+  },
+  (t) => [check("credit_entry_amount_not_zero", sql`${t.amount} <> 0`), index("credit_entry_enrollment_idx").on(t.enrollmentId)],
+);
+
+export const ATTENDANCE_STATUSES = ["inscrito", "cancelou", "presente", "falta"] as const;
+export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
+
+export const lessonStudent = pgTable(
+  "lesson_student",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    lessonId: uuid("lesson_id")
+      .notNull()
+      .references(() => lesson.id),
+    enrollmentId: uuid("enrollment_id")
+      .notNull()
+      .references(() => enrollment.id),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => student.id),
+    status: text("status", { enum: ATTENDANCE_STATUSES }).notNull().default("inscrito"),
+    /** Cancelou dentro da antecedência mínima do curso (não gasta aula). */
+    cancelledInTime: boolean("cancelled_in_time"),
+    updatedAt: updatedAt(),
+  },
+  (t) => [unique("lesson_student_uq").on(t.lessonId, t.enrollmentId), index("lesson_student_student_idx").on(t.studentId)],
 );

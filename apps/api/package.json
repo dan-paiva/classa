@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@classa/db": "workspace:*",
+    "@classa/domain": "workspace:*",
     "better-auth": "1.7.5",
     "hono": "4.13.8",
     "uuidv7": "1.2.1",

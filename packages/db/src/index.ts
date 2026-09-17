@@ -15,4 +15,4 @@ export function createDb(url: string) {
 }
 
 // operadores reexportados para que todo o monorepo use a mesma instância do drizzle-orm
-export { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
+export { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, not, or, sql } from "drizzle-orm";
