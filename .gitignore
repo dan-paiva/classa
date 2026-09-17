@@ -18,3 +18,4 @@ test-results/
 prototipo/
 *.xlsx
 *_files/
+.neon

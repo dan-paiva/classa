@@ -5,6 +5,7 @@ export default defineConfig({
   schema: "./src/schema.ts",
   out: "./migrations",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://classa:classa@localhost:5432/classa",
+    // migrations usam a conexão direta (sem pooler) quando ela existe
+    url: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL ?? "postgres://classa:classa@localhost:5432/classa",
   },
 });
