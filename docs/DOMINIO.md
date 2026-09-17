@@ -446,6 +446,18 @@ Modelo do protótipo, aplicado no servidor:
 - `audit_log`, append-only: escola, autor, entidade, id, ação (`create`, `update`, `deactivate`, `reactivate`, `delete`, `cancel`, `import`, `transition`), antes, depois, justificativa, data.
 - A tela filtra por entidade, autor e período, e abre o registro de origem.
 - Ações repetidas não são agrupadas: cada escrita é uma linha (**corrigido**: o protótipo agrupava cliques e perdia detalhes).
+- Só o tipo Admin abre a auditoria.
+
+## 9.1 Painéis, relatórios e alertas
+
+- **Alertas** (`/alerts`): aulas sem presença registrada, aulas futuras sem professor ou sem sala, parcelas vencidas, matrículas a renovar, pacotes sem saldo, folha do mês anterior em aberto, contratos de empresa vencendo e empresas acima das licenças. Cada alerta declara o recurso que o torna visível, e quem não vê o recurso não recebe o alerta.
+- **Relatórios**, cada um exigindo o recurso correspondente:
+  - financeiro (recurso `financeiro`): por mês, recebido, valor das aulas dadas, custo da folha e margem;
+  - frequência (recurso `turmas`): presenças, faltas e cancelamentos por turma, e os alunos que mais faltaram;
+  - professores (recurso `professores`): aulas dadas, horas, média semanal contra o limite, substituições e apoio; o custo só aparece para quem vê a folha;
+  - matrículas (recurso `alunos`): entradas e saídas por mês, alunos por situação e matrículas ativas por curso.
+- O número de aulas dadas usa a mesma conta da tela de folha, para os relatórios baterem com o que foi pago.
+- A exportação para planilha é feita na tela, a partir dos mesmos dados exibidos.
 
 ## 10. O que não vem do protótipo
 
@@ -493,4 +505,4 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 7. **Empresas B2B e B2B2C.** Importador: empresas.
 8. **Leads, renovação e fluxos kanban.**
 9. **Perfis e acesso completos**, com escopo por registro.
-10. **Painéis, relatórios e alertas.**
+10. **Painéis, relatórios e alertas.** ✔

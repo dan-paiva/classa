@@ -8,9 +8,9 @@ Sistema de gestão escolar open source: alunos, matrículas, turmas, agenda de a
 
 Funciona hoje: login, escolas, cursos e módulos, professores (habilitação e disponibilidade), alunos, salas, feriados, turmas com geração de aulas, agenda semanal, presença e conclusão de aula, matrículas com extrato de créditos, contratos, parcelas, pagamentos, estorno e inadimplência automática.
 
-Também: folha de professores e fechamento do mês, empresas B2B/B2B2C com cobrança, leads, fluxos em kanban (substituição, nível, reposição, admissão, cobrança, renovação, retenção, campanhas), perfis de acesso por nível e área, convites e áreas do professor e do aluno.
+Também: folha de professores e fechamento do mês, empresas B2B/B2B2C com cobrança, leads, fluxos em kanban (substituição, nível, reposição, admissão, cobrança, renovação, retenção, campanhas), perfis de acesso por nível e área, convites e áreas do professor e do aluno, auditoria de todas as alterações, painel de alertas e relatórios (financeiro, frequência, professores e matrículas) com exportação para planilha.
 
-Próximos: auditoria e relatórios, e o importador do protótipo (uso local).
+Próximo: o importador do protótipo (uso local).
 
 Regras de negócio em [docs/DOMINIO.md](docs/DOMINIO.md); arquitetura em [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
 

@@ -141,6 +141,15 @@ describe("perfis de acesso", () => {
     expect((await as(teacherCookie, "/audit")).status).toBe(403);
   });
 
+  it("relatórios: cada aba exige o recurso correspondente", async () => {
+    expect((await admin.json("/reports/financeiro?months=3")).status).toBe(200);
+    // a coordenação virou admin no teste anterior: uso o professor e o aluno
+    expect((await as(teacherCookie, "/reports/financeiro?months=3")).status).toBe(403);
+    expect((await as(teacherCookie, "/alerts")).status).toBe(403);
+    expect((await as(studentCookie, "/reports/frequencia?from=2026-01-01&to=2026-01-31")).status).toBe(403);
+    expect((await admin.json("/reports/frequencia?from=2026-13-01&to=2026-01-31")).status).toBe(400);
+  });
+
   it("convite para quem já tem acesso é recusado; aceite com outro e-mail também", async () => {
     expect((await admin.json("/invitations", "POST", { email: "coord@acesso.classa.dev", profileType: "admin" })).status).toBe(409);
     const { link } = await body<{ link: string }>(await admin.json("/invitations", "POST", { email: "novo@acesso.classa.dev", profileType: "colaborador", level: 3, areas: { com: "total" } }));
