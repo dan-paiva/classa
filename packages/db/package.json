@@ -10,7 +10,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "migrate:prod": "node --env-file=../../.env node_modules/drizzle-kit/bin.cjs migrate"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
