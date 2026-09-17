@@ -1,14 +1,11 @@
-import { PGlite } from "@electric-sql/pglite";
-import { eq } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it } from "vitest";
-import { auditLog, schema, tenant } from "./index.ts";
+import { auditLog, eq, tenant, type Database } from "./index.ts";
+import { createTestDb } from "./testing.ts";
 
-const db = drizzle(new PGlite(), { schema });
+let db: Database;
 
 beforeAll(async () => {
-  await migrate(db, { migrationsFolder: new URL("../migrations", import.meta.url).pathname });
+  db = await createTestDb();
 });
 
 describe("schema", () => {
@@ -36,7 +33,7 @@ describe("schema", () => {
       db.insert(auditLog).values({
         tenantId: "00000000-0000-7000-8000-000000000000",
         entity: "tenant",
-        entityId: "00000000-0000-7000-8000-000000000000",
+        entityId: "x",
         action: "create",
       }),
     ).rejects.toThrow();

@@ -1,0 +1,6 @@
+# Copie para apps/api/.dev.vars (não versionado)
+DATABASE_URL=postgres://classa:classa@localhost:5432/classa
+BETTER_AUTH_URL=http://localhost:8787
+TRUSTED_ORIGINS=http://localhost:5173
+# gere com: openssl rand -base64 32
+BETTER_AUTH_SECRET=troque-por-um-segredo-aleatorio-de-32-caracteres
