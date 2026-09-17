@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@classa/db": "workspace:*",
@@ -21,6 +22,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "5.20260917.1",
     "@types/node": "22.20.3",
+    "tsx": "4.23.13",
     "vitest": "5.0.1",
     "wrangler": "4.133.0"
   }
