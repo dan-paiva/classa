@@ -89,6 +89,37 @@ export const ROOM_KIND_LABELS = { virtual: "Virtual", presencial: "Presencial", 
 
 export type Schedule = { weekday: number; startTime: string };
 
+/** Como o aluno se liga à turma. Não confundir com modalidade (online/presencial). */
+export const CLASS_REGIMES = ["regular", "open_entry", "particular"] as const;
+export type ClassRegime = (typeof CLASS_REGIMES)[number];
+export const REGIME_LABELS: Record<ClassRegime, string> = {
+  regular: "Turma regular",
+  open_entry: "Open-entry",
+  particular: "Particular",
+};
+export const REGIME_HINTS: Record<ClassRegime, string> = {
+  regular: "O aluno pertence à turma e entra em todas as aulas dela.",
+  open_entry: "Ninguém fica preso à turma: as vagas ficam abertas e o aluno reserva aula a aula, no nível dele.",
+  particular: "Turma de uma vaga, criada na alocação da matrícula.",
+};
+
+/** Uma aula open-entry com vaga, do ponto de vista de uma matrícula. */
+export type OpenSlot = {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  className: string;
+  moduleName: string | null;
+  teacherName: string | null;
+  roomName: string | null;
+  modality: Modality;
+  capacity: number;
+  taken: number;
+  seatsLeft: number;
+  full: boolean;
+  mine: boolean;
+};
+
 export type ClassGroup = {
   id: string;
   courseId: string;
@@ -97,6 +128,7 @@ export type ClassGroup = {
   teacherId: string | null;
   roomId: string | null;
   modality: Modality;
+  regime: ClassRegime;
   capacity: number;
   individual: boolean;
   startsOn: string;
@@ -174,7 +206,10 @@ export type Enrollment = {
   id: string;
   studentId: string;
   courseId: string;
-  classGroupId: string;
+  regime: ClassRegime;
+  /** Vazia no open-entry: a matrícula não fica presa a turma nenhuma. */
+  classGroupId: string | null;
+  moduleId: string | null;
   modality: Modality;
   packageLessons: number;
   startsOn: string;
@@ -184,7 +219,7 @@ export type Enrollment = {
   studentStatus: StudentStatus;
   courseName: string;
   courseColor: string;
-  className: string;
+  className: string | null;
   moduleName: string | null;
   balance: number;
   used: number;
@@ -312,9 +347,12 @@ export type PayrollPeriod = { id: string; month: string; closedAt: string; netCe
 
 export type Lead = {
   id: string;
+  /** A pessoa nasce na captação e o id acompanha até depois de virar aluno. */
+  personId: string;
   name: string;
   email: string | null;
   phone: string | null;
+  cpf: string | null;
   origin: string;
   campaign: string | null;
   courseId: string | null;
@@ -449,7 +487,7 @@ export const school = {
   classGroup: (slug: string, id: string) => request<{ classGroup: ClassGroup; enrollments: Enrollment[]; lessons: Lesson[] }>(`${t(slug)}/class-groups/${id}`),
   createClassGroup: (
     slug: string,
-    input: { courseId: string; moduleId?: string | null; name: string; teacherId?: string | null; roomId?: string | null; modality?: Modality; capacity?: number; startsOn: string; endsOn: string; schedules: Schedule[]; generateWeeks?: number },
+    input: { courseId: string; moduleId?: string | null; name: string; teacherId?: string | null; roomId?: string | null; modality?: Modality; regime?: ClassRegime; capacity?: number; startsOn: string; endsOn: string; schedules: Schedule[]; generateWeeks?: number },
   ) => request<{ classGroup: ClassGroup; warnings: string[]; generation: GenerationResult | null }>(`${t(slug)}/class-groups`, post(input)),
   generateLessons: (slug: string, id: string, range: { from: string; to: string }) => request<{ generation: GenerationResult }>(`${t(slug)}/class-groups/${id}/generate`, post(range)),
 
@@ -470,8 +508,26 @@ export const school = {
   enrollments: (slug: string, filters: { studentId?: string; classGroupId?: string; active?: "1" } = {}) => request<{ enrollments: Enrollment[] }>(`${t(slug)}/enrollments${qs(filters)}`),
   createEnrollment: (
     slug: string,
-    input: { studentId: string; classGroupId: string; packageLessons?: number; startsOn?: string; modality?: Modality; contract?: false | { discountCents?: number; installments?: number; dueDay?: number } },
+    input: {
+      studentId: string;
+      /** Fora do open-entry, a turma é obrigatória. */
+      classGroupId?: string;
+      regime?: ClassRegime;
+      /** Open-entry: curso e nível, já que não há turma. */
+      courseId?: string;
+      moduleId?: string;
+      packageLessons?: number;
+      startsOn?: string;
+      modality?: Modality;
+      contract?: false | { discountCents?: number; installments?: number; dueDay?: number };
+    },
   ) => request<{ enrollment: Enrollment }>(`${t(slug)}/enrollments`, post(input)),
+
+  /** Vagas open-entry que esta matrícula pode pegar (mesmo curso, mesmo nível). */
+  openSlots: (slug: string, enrollmentId: string, filters: { from?: string; to?: string } = {}) =>
+    request<{ slots: OpenSlot[] }>(`${t(slug)}/enrollments/${enrollmentId}/vagas${qs(filters)}`),
+  reserveSlot: (slug: string, enrollmentId: string, lessonId: string) =>
+    request<{ reserva: { id: string } }>(`${t(slug)}/enrollments/${enrollmentId}/vagas/${lessonId}`, post()),
   endEnrollment: (slug: string, id: string) => request(`${t(slug)}/enrollments/${id}/end`, post()),
   reactivateEnrollment: (slug: string, id: string) => request(`${t(slug)}/enrollments/${id}/reactivate`, post()),
   transferEnrollment: (slug: string, id: string, classGroupId: string) => request(`${t(slug)}/enrollments/${id}/transfer`, post({ classGroupId })),
@@ -521,6 +577,14 @@ export const school = {
   setMemberBlocked: (slug: string, id: string, blocked: boolean) => request(`${t(slug)}/users/${id}/${blocked ? "block" : "unblock"}`, post()),
   myArea: (slug: string) => request<MyArea>(`${t(slug)}/minha-area`),
   myLesson: (slug: string, lessonId: string, action: "cancelar" | "reagendar") => request(`${t(slug)}/minha-area/aulas/${lessonId}/${action}`, post()),
+
+  /** Vagas abertas do próprio aluno, agrupadas por matrícula open-entry. */
+  myOpenSlots: (slug: string) =>
+    request<{
+      matriculas: { enrollmentId: string; courseName: string; moduleName: string | null; balance: number; available: number; slots: OpenSlot[] }[];
+    }>(`${t(slug)}/minha-area/vagas`),
+  reserveMySlot: (slug: string, enrollmentId: string, lessonId: string) =>
+    request<{ reserva: { id: string } }>(`${t(slug)}/minha-area/vagas/${enrollmentId}/${lessonId}`, post()),
 
   alerts: (slug: string) => request<{ alerts: Alert[] }>(`${t(slug)}/alerts`),
 

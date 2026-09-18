@@ -11,6 +11,7 @@ const NAV = [
   { to: "/e/$slug/agenda", label: "Agenda", resource: "agenda" },
   { to: "/e/$slug/acoes", label: "Ações", resource: "fluxos" },
   { to: "/e/$slug/turmas", label: "Turmas", resource: "turmas" },
+  { to: "/e/$slug/vagas", label: "Vagas", resource: "agenda" },
   { to: "/e/$slug/alunos", label: "Alunos", resource: "alunos" },
   { to: "/e/$slug/professores", label: "Professores", resource: "professores" },
   { to: "/e/$slug/leads", label: "Leads", resource: "leads" },

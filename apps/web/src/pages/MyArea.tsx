@@ -33,6 +33,8 @@ export function MyArea() {
         <Stat label="Em aberto" value={money(open.reduce((s, i) => s + i.amountCents - i.paidCents, 0))} tone={installments.some((i) => i.status === "vencida") ? "danger" : undefined} />
       </div>
 
+      <OpenSlotsPanel slug={slug} />
+
       <div className="grid-2">
         <section className="panel stack">
           <h2>Próximas aulas</h2>
@@ -86,7 +88,12 @@ export function MyArea() {
                 {e.courseName}
               </strong>
               <span className="small muted">
-                {e.className} · contrato até {fmtIsoDate(e.endsOn)} {e.endedAt && <Badge tone="muted">Encerrada</Badge>}
+                {e.className ?? (
+                  <>
+                    <Badge tone="info">Open-entry</Badge> {e.moduleName ?? "sem nível"}
+                  </>
+                )}{" "}
+                · contrato até {fmtIsoDate(e.endsOn)} {e.endedAt && <Badge tone="muted">Encerrada</Badge>}
               </span>
               <span className="small">
                 {e.balance} aulas restantes <UsageBar used={e.used} granted={e.granted} />
@@ -141,5 +148,77 @@ export function MyArea() {
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * Vagas abertas do aluno. Só aparece para quem tem matrícula open-entry; se o
+ * curso não deixa o aluno agendar sozinho, a API responde 403 e a mensagem
+ * dela é o que o aluno lê.
+ */
+function OpenSlotsPanel({ slug }: { slug: string }) {
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["my-open-slots", slug], queryFn: () => school.myOpenSlots(slug) });
+  const reserve = useMutation({
+    mutationFn: ({ enrollmentId, lessonId }: { enrollmentId: string; lessonId: string }) => school.reserveMySlot(slug, enrollmentId, lessonId),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["my-open-slots", slug] });
+      await qc.invalidateQueries({ queryKey: ["my-area", slug] });
+    },
+  });
+
+  if (q.isPending || q.isError) return null; // o painel é opcional: não atrapalha o resto da área
+  const comVagas = q.data.matriculas.filter((m) => m.slots.length > 0);
+  if (comVagas.length === 0) return null;
+
+  return (
+    <section className="panel stack">
+      <h2>Marcar aula</h2>
+      <p className="muted small">Você escolhe o horário que der, dentro do seu nível. Cancelar no prazo devolve a aula.</p>
+      <ActionError error={reserve.error} />
+      {comVagas.map((m) => {
+        const livres = m.slots.filter((s) => !s.mine && !s.full);
+        return (
+          <div key={m.enrollmentId} className="stack-sm">
+            <strong className="small">
+              {m.courseName} · {m.moduleName ?? "sem nível"}
+            </strong>
+            <span className="small muted">
+              {m.available > 0
+                ? `${m.available} aula${m.available > 1 ? "s" : ""} para marcar${livres.length > 8 ? ` · mostrando os 8 horários mais próximos de ${livres.length}` : ""}`
+                : "Sem saldo para marcar: cancele outra ou renove o pacote"}
+            </span>
+            {livres.length === 0 ? (
+              <p className="muted small">Nenhum horário livre no seu nível por enquanto.</p>
+            ) : (
+              <ul className="lesson-list slot-list">
+                {livres.slice(0, 8).map((s) => (
+                  <li key={s.id} className="lesson-link">
+                    <span className="lesson-time">
+                      {fmtWeekday(s.startsAt)} {fmtShortDate(s.startsAt)} {fmtTime(s.startsAt)}
+                    </span>
+                    <span className="lesson-main">
+                      {s.className}
+                      <small className="muted">
+                        {s.teacherName ?? "professor a definir"} · {s.roomName ?? "sala a definir"} · {s.seatsLeft} vaga
+                        {s.seatsLeft > 1 ? "s" : ""}
+                      </small>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={reserve.isPending || m.available <= 0}
+                      onClick={() => reserve.mutate({ enrollmentId: m.enrollmentId, lessonId: s.id })}
+                    >
+                      Marcar
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </section>
   );
 }

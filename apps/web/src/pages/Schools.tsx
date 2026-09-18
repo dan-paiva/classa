@@ -1,9 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { api, issuesOf } from "../api.ts";
+import { LEVEL_LABELS } from "@classa/domain";
+import { api, issuesOf, type Membership } from "../api.ts";
 import { authClient } from "../auth-client.ts";
 import { Field, FormError } from "../ui.tsx";
+
+/**
+ * Como a pessoa entra nesta escola. Estava escrito "administrador" para todo
+ * mundo — o aluno lia que era administrador da escola.
+ */
+function perfilLabel(m: Membership) {
+  if (m.profileType === "aluno") return "aluno";
+  if (m.profileType === "prestador") return "professor";
+  if (m.profileType === "admin") return "administrador";
+  return LEVEL_LABELS[m.level as 1].toLowerCase();
+}
 
 export function Schools() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -43,7 +55,7 @@ export function Schools() {
                 <li key={m.tenantId}>
                   <Link to="/e/$slug" params={{ slug: m.slug }} className="list-link">
                     <strong>{m.name}</strong>
-                    <span>administrador</span>
+                    <span>{perfilLabel(m)}</span>
                   </Link>
                 </li>
               ))}

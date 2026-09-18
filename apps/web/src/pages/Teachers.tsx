@@ -6,7 +6,7 @@ import { school, type Teacher } from "../api-school.ts";
 import { AvailabilityGrid } from "../components/AvailabilityGrid.tsx";
 import { fmtShortDate, fmtTime, fmtWeekday, formatPhone, money, parseReais, scheduleLabel } from "../lib/format.ts";
 import { LessonStateBadge } from "../status.tsx";
-import { ActionError, Badge, ColorDot, Empty, Field, FormError, LoadError, Loading, PageHead } from "../ui.tsx";
+import { ActionError, Badge, ColorDot, Empty, Field, FormError, LoadError, Loading, PageHead, PersonExists } from "../ui.tsx";
 
 export function Teachers() {
   const { slug } = useParams({ strict: false }) as { slug: string };
@@ -196,7 +196,7 @@ export function TeacherForm() {
           <Field label="Nome completo" htmlFor="t-name" errors={issues.name}>
             <input id="t-name" required value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label="E-mail" htmlFor="t-email" errors={issues.email}>
+          <Field label="E-mail pessoal" htmlFor="t-email" errors={issues.email} hint="O corporativo entra depois, pelo convite de acesso.">
             <input id="t-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </Field>
           <Field label="Telefone" htmlFor="t-phone" errors={issues.phone}>
@@ -223,6 +223,7 @@ export function TeacherForm() {
         <h2>Disponibilidade</h2>
         <AvailabilityGrid value={availability} onChange={setAvailability} />
       </section>
+      <PersonExists error={create.error} />
       <FormError error={create.error} />
       <div className="actions">
         <button type="submit" className="btn btn-primary" disabled={create.isPending}>

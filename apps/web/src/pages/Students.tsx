@@ -1,13 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
-import { issuesOf } from "../api.ts";
+import { api, issuesOf } from "../api.ts";
 import {
   CREDIT_KIND_LABELS,
   PAYMENT_METHOD_LABELS,
+  REGIME_HINTS,
+  REGIME_LABELS,
   school,
   STUDENT_STATUS_LABELS,
   STUDENT_STATUSES,
+  type ClassRegime,
   type Enrollment,
   type Installment,
   type PaymentMethod,
@@ -16,7 +19,7 @@ import {
 import { AvailabilityGrid } from "../components/AvailabilityGrid.tsx";
 import { fmtDate, fmtIsoDate, fmtShortDate, fmtTime, fmtWeekday, formatCpf, formatPhone, money, parseReais, todayIso } from "../lib/format.ts";
 import { InstallmentBadge, LessonStateBadge, StudentStatusBadge, UsageBar } from "../status.tsx";
-import { ActionError, Badge, ColorDot, Empty, Field, FormError, LoadError, Loading, PageHead } from "../ui.tsx";
+import { ActionError, Badge, ColorDot, Empty, Field, FormError, LoadError, Loading, PageHead, PersonExists } from "../ui.tsx";
 
 export function Students() {
   const { slug } = useParams({ strict: false }) as { slug: string };
@@ -131,7 +134,7 @@ export function StudentForm() {
           <Field label="Nome completo" htmlFor="s-name" errors={issues.name}>
             <input id="s-name" required value={person.name} onChange={set("name")} />
           </Field>
-          <Field label="E-mail" htmlFor="s-email" errors={issues.email}>
+          <Field label="E-mail pessoal" htmlFor="s-email" errors={issues.email} hint="Se ele também trabalhar na escola, o corporativo entra pelo convite de acesso.">
             <input id="s-email" type="email" value={person.email} onChange={set("email")} />
           </Field>
           <Field label="Telefone" htmlFor="s-phone" errors={issues.phone}>
@@ -150,6 +153,7 @@ export function StudentForm() {
         <p className="muted small">Opcional. Ajuda a encontrar turma e horário de aula particular.</p>
         <AvailabilityGrid value={availability} onChange={setAvailability} />
       </section>
+      <PersonExists error={create.error} />
       <FormError error={create.error} />
       <div className="actions">
         <button type="submit" className="btn btn-primary" disabled={create.isPending}>
@@ -290,21 +294,37 @@ function presenceRate(lessons: Awaited<ReturnType<typeof school.student>>["lesso
 
 function EnrollmentsTab({ slug, studentId, enrollments, onChange, canEnroll }: { slug: string; studentId: string; enrollments: Enrollment[]; onChange: () => Promise<unknown>; canEnroll: boolean }) {
   const groups = useQuery({ queryKey: ["class-groups", slug], queryFn: () => school.classGroups(slug) });
+  const courses = useQuery({ queryKey: ["courses", slug], queryFn: () => api.courses(slug) });
   const [adding, setAdding] = useState(false);
+  const [regime, setRegime] = useState<ClassRegime>("regular");
   const [classGroupId, setClassGroupId] = useState("");
+  const [courseId, setCourseId] = useState("");
+  const [moduleId, setModuleId] = useState("");
   const [installments, setInstallments] = useState("6");
   const [ledgerOf, setLedgerOf] = useState<string | null>(null);
   const act = useMutation({ mutationFn: (fn: () => Promise<unknown>) => fn(), onSuccess: onChange });
   const create = useMutation({
-    mutationFn: () => school.createEnrollment(slug, { studentId, classGroupId, contract: { installments: Number(installments) } }),
+    mutationFn: () =>
+      school.createEnrollment(
+        slug,
+        regime === "open_entry"
+          ? { studentId, regime, courseId, moduleId, contract: { installments: Number(installments) } }
+          : { studentId, classGroupId, contract: { installments: Number(installments) } },
+      ),
     onSuccess: async () => {
       setAdding(false);
       setClassGroupId("");
+      setCourseId("");
+      setModuleId("");
       await onChange();
     },
   });
 
-  const available = (groups.data?.classGroups ?? []).filter((g) => !g.deactivatedAt && g.enrolled < g.capacity);
+  // turmas regulares com vaga; a open-entry não entra aqui, porque nela ninguém se matricula
+  const available = (groups.data?.classGroups ?? []).filter((g) => !g.deactivatedAt && g.regime !== "open_entry" && g.enrolled < g.capacity);
+  // só curso com módulo pode ter open-entry: o módulo é o nível
+  const openCourses = (courses.data?.courses ?? []).filter((c) => !c.deactivatedAt && c.modules.some((m) => !m.deactivatedAt));
+  const openCourse = openCourses.find((c) => c.id === courseId);
 
   return (
     <section className="panel stack">
@@ -324,16 +344,57 @@ function EnrollmentsTab({ slug, studentId, enrollments, onChange, canEnroll }: {
             create.mutate();
           }}
         >
-          <Field label="Turma (só as que têm vaga)" htmlFor="ne-group">
-            <select id="ne-group" required value={classGroupId} onChange={(e) => setClassGroupId(e.target.value)}>
-              <option value="">Escolha…</option>
-              {available.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.courseName} · {g.name} ({g.enrolled}/{g.capacity})
-                </option>
-              ))}
+          <Field label="Regime" htmlFor="ne-regime" hint={REGIME_HINTS[regime]}>
+            <select id="ne-regime" value={regime} onChange={(e) => setRegime(e.target.value as ClassRegime)}>
+              <option value="regular">{REGIME_LABELS.regular}</option>
+              <option value="open_entry">{REGIME_LABELS.open_entry}</option>
             </select>
           </Field>
+          {regime === "open_entry" ? (
+            <>
+              <Field label="Curso" htmlFor="ne-course">
+                <select
+                  id="ne-course"
+                  required
+                  value={courseId}
+                  onChange={(e) => {
+                    setCourseId(e.target.value);
+                    setModuleId("");
+                  }}
+                >
+                  <option value="">Escolha…</option>
+                  {openCourses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Nível" htmlFor="ne-module" hint="É ele que limita o que o aluno pode reservar.">
+                <select id="ne-module" required value={moduleId} onChange={(e) => setModuleId(e.target.value)} disabled={!openCourse}>
+                  <option value="">Escolha…</option>
+                  {openCourse?.modules
+                    .filter((m) => !m.deactivatedAt)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            </>
+          ) : (
+            <Field label="Turma (só as que têm vaga)" htmlFor="ne-group">
+              <select id="ne-group" required value={classGroupId} onChange={(e) => setClassGroupId(e.target.value)}>
+                <option value="">Escolha…</option>
+                {available.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.courseName} · {g.name} ({g.enrolled}/{g.capacity})
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Field label="Parcelas" htmlFor="ne-inst">
             <select id="ne-inst" value={installments} onChange={(e) => setInstallments(e.target.value)}>
               {[1, 2, 3, 4, 6, 10, 12].map((n) => (
@@ -374,9 +435,15 @@ function EnrollmentsTab({ slug, studentId, enrollments, onChange, canEnroll }: {
                     {e.courseName}
                   </span>
                   <div className="small">
-                    <Link to="/e/$slug/turmas/$classGroupId" params={{ slug, classGroupId: e.classGroupId }}>
-                      {e.className}
-                    </Link>
+                    {e.classGroupId ? (
+                      <Link to="/e/$slug/turmas/$classGroupId" params={{ slug, classGroupId: e.classGroupId }}>
+                        {e.className}
+                      </Link>
+                    ) : (
+                      <>
+                        <Badge tone="info">Open-entry</Badge> {e.moduleName ?? "sem nível"}
+                      </>
+                    )}
                     {e.endedAt && <Badge tone="muted">Encerrada em {fmtDate(e.endedAt)}</Badge>}
                   </div>
                 </td>

@@ -228,3 +228,32 @@ describe("open-entry", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("open-entry: a lista não oferece o que a reserva recusa", () => {
+  it("aula dentro da janela de antecedência some das vagas", async () => {
+    // curso com 48h de antecedência: quase tudo da próxima semana some
+    const { course } = await body<{ course: { id: string } }>(
+      await admin.json("/courses", "POST", { name: "Alemão", type: "grupo", cancelNoticeHours: 48 }),
+    );
+    const mod = (await body<{ module: { id: string } }>(await admin.json(`/courses/${course.id}/modules`, "POST", { name: "A1" }))).module;
+    const { teacher } = await body<{ teacher: { id: string } }>(
+      await admin.json("/teachers", "POST", { person: { name: "Prof Alemão" }, availability: manha, courses: [{ courseId: course.id, moduleIds: null }] }),
+    );
+    await body(
+      await admin.json("/class-groups", "POST", {
+        courseId: course.id, moduleId: mod.id, name: "Open A1 · todo dia 08h", teacherId: teacher.id, regime: "open_entry",
+        startsOn: hoje, endsOn: daqui90,
+        schedules: [1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, startTime: "08:00" })),
+        generateWeeks: 2,
+      }),
+    );
+    const s = await aluno("Aluna Alemão");
+    const { enrollment } = await body<{ enrollment: { id: string } }>(
+      await admin.json("/enrollments", "POST", { studentId: s.id, regime: "open_entry", courseId: course.id, moduleId: mod.id, contract: false }),
+    );
+    const { slots } = await body<{ slots: Slot[] }>(await admin.json(`/enrollments/${enrollment.id}/vagas`));
+    const limite = Date.now() + 48 * 3600_000;
+    expect(slots.length).toBeGreaterThan(0);
+    expect(slots.every((x) => new Date(x.startsAt).getTime() >= limite)).toBe(true);
+  });
+});

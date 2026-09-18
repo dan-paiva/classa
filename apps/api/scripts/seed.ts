@@ -377,6 +377,7 @@ async function main() {
     // Alunos sem turma fixa: cada um no seu nível, reservando as aulas que consegue.
     let openStudents = 0;
     let reservas = 0;
+    let primeiroOpen: { id: string; name: string } | null = null;
     for (const [i, moduleIdx] of [0, 0, 0, 2, 2].entries()) {
       const name = fullName();
       const st = await createStudent(nowCtx, {
@@ -384,6 +385,7 @@ async function main() {
         availability: range([1, 2, 3, 4, 6], [10, 19]),
       });
       students.push({ id: st.id, name });
+      primeiroOpen ??= { id: st.id, name };
       const startsOn = addDays(today, -30 + i * 3);
       const e = await createEnrollment(at(base, localMidnight(startsOn)), {
         studentId: st.id,
@@ -636,11 +638,14 @@ async function main() {
     const [teacherPerson] = await db.select({ personId: teacherTable.personId }).from(teacherTable).where(eq(teacherTable.id, teachers[0]!.id));
     const privateStudent = particulares[0]!.student;
     const [studentPerson] = await db.select({ personId: studentTable.personId }).from(studentTable).where(eq(studentTable.id, privateStudent.id));
+    const [openPerson] = await db.select({ personId: studentTable.personId }).from(studentTable).where(eq(studentTable.id, primeiroOpen!.id));
     const demoProfiles = [
       { email: "coordenacao@demo.classa.dev", name: "Coordenação Demo", profileType: "colaborador" as const, level: 2, areas: { ped: "total" as const, aca: "restrito" as const }, personId: null },
       { email: "financeiro@demo.classa.dev", name: "Financeiro Demo", profileType: "colaborador" as const, level: 3, areas: { fin: "total" as const, aca: "restrito" as const }, personId: null },
       { email: "professor@demo.classa.dev", name: teachers[0]!.name, profileType: "prestador" as const, level: 4, areas: {}, personId: teacherPerson!.personId },
       { email: "aluno@demo.classa.dev", name: privateStudent.name, profileType: "aluno" as const, level: 5, areas: {}, personId: studentPerson!.personId },
+      // aluno sem turma fixa: é ele que marca a própria aula na área do aluno
+      { email: "aluno.open@demo.classa.dev", name: primeiroOpen!.name, profileType: "aluno" as const, level: 5, areas: {}, personId: openPerson!.personId },
     ];
     for (const prof of demoProfiles) {
       const u = await account(prof.email, prof.name);
@@ -652,7 +657,7 @@ async function main() {
       }
     }
     void personTable;
-    log("contas de demonstração: coordenacao@, financeiro@, professor@ e aluno@demo.classa.dev (senha classa-demo-123)");
+    log("contas de demonstração: coordenacao@, financeiro@, professor@, aluno@ e aluno.open@demo.classa.dev (senha classa-demo-123)");
 
     const active = await listEnrollments(nowCtx, { activeOnly: true });
     const high = active.filter((e) => e.usage >= 0.8).length;

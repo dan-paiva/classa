@@ -79,6 +79,7 @@ export async function listOpenSlots(ctx: ServiceContext, enrollmentId: string, f
     })
     .from(lesson)
     .innerJoin(classGroup, eq(classGroup.id, lesson.classGroupId))
+    .innerJoin(course, eq(course.id, lesson.courseId))
     .leftJoin(courseModule, eq(courseModule.id, lesson.moduleId))
     .leftJoin(teacher, eq(teacher.id, lesson.teacherId))
     .leftJoin(person, eq(person.id, teacher.personId))
@@ -92,6 +93,8 @@ export async function listOpenSlots(ctx: ServiceContext, enrollmentId: string, f
         eq(lesson.moduleId, e.moduleId!),
         eq(lesson.state, "agendada"),
         sql`${lesson.startsAt} >= ${(filters.from ? new Date(`${filters.from}T00:00:00Z`) : ctx.now).toISOString()}`,
+        // não oferece o que a reserva vai recusar: a janela de antecedência do curso já passou
+        sql`${lesson.startsAt} >= ${ctx.now.toISOString()}::timestamptz + make_interval(hours => ${course.cancelNoticeHours})`,
         filters.to ? sql`${lesson.startsAt} < ${new Date(`${filters.to}T23:59:59Z`).toISOString()}` : undefined,
         sql`(${lesson.startsAt} at time zone ${ctx.timezone})::date between ${e.startsOn} and ${e.endsOn}`,
       ),
