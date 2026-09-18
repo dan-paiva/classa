@@ -6,6 +6,7 @@ import { isoDate, uuid } from "../../http/query.ts";
 import {authorize} from "../../http/require-tenant.ts";
 import { parseBody } from "../../http/validation.ts";
 import { contextFrom } from "../../services/context.ts";
+import { listOpenSlots, reserveLesson } from "../../services/open-entry.ts";
 import {
   addCreditEntry,
   createEnrollment,
@@ -37,7 +38,11 @@ export const financeRoutes = new Hono<AppEnv>()
       c,
       z.object({
         studentId: uuid,
-        classGroupId: uuid,
+        // open-entry não tem turma: vai curso + módulo (o nível do aluno)
+        regime: z.enum(["regular", "open_entry", "particular"]).optional(),
+        classGroupId: uuid.optional(),
+        courseId: uuid.optional(),
+        moduleId: uuid.optional(),
         packageLessons: z.number().int().optional(),
         startsOn: isoDate.optional(),
         endsOn: isoDate.optional(),
@@ -51,6 +56,16 @@ export const financeRoutes = new Hono<AppEnv>()
 
   .post("/enrollments/:id/end", authorize("alunos", "inativar"), async (c) => c.json({ enrollment: await endEnrollment(contextFrom(c), c.req.param("id")) }))
   .post("/enrollments/:id/reactivate", authorize("alunos", "inativar"), async (c) => c.json({ enrollment: await reactivateEnrollment(contextFrom(c), c.req.param("id")) }))
+
+  /* ----------------------------------------------------- open-entry (§5.9) */
+
+  .get("/enrollments/:id/vagas", authorize("agenda", "ver"), async (c) =>
+    c.json({ slots: await listOpenSlots(contextFrom(c), c.req.param("id"), { from: c.req.query("from"), to: c.req.query("to") }) }),
+  )
+
+  .post("/enrollments/:id/vagas/:lessonId", authorize("agenda", "operar"), async (c) =>
+    c.json({ reserva: await reserveLesson(contextFrom(c), c.req.param("id"), c.req.param("lessonId")) }, 201),
+  )
 
   .post("/enrollments/:id/transfer", authorize("alunos", "editar"), async (c) => {
     const { data, error } = await parseBody(c, z.object({ classGroupId: uuid }));

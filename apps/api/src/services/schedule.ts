@@ -20,6 +20,7 @@ import {
   sql,
   teacher,
   type Modality,
+  type ClassRegime,
 } from "@classa/db";
 import { addDays, dateInZone, fitsAvailability, generateLessonSlots, nationalHolidays } from "@classa/domain";
 import { audit } from "../http/audit.ts";
@@ -86,6 +87,7 @@ export type ClassGroupInput = {
   endsOn: string;
   schedules: ScheduleInput[];
   individual?: boolean;
+  regime?: ClassRegime;
 };
 
 async function loadCourse(db: Db, ctx: ServiceContext, courseId: string) {
@@ -138,8 +140,10 @@ export async function validateClassGroup(db: Db, ctx: ServiceContext, input: Cla
   const modality = input.modality ?? c.modalities[0]!;
   if (!c.modalities.includes(modality)) throw invalid("modality", "Modalidade não aceita por este curso");
 
-  const individual = c.type === "particular" || !!input.individual;
-  const capacity = individual ? 1 : (input.capacity ?? c.capacity);
+  // `individual` continua aceito por compatibilidade: é o regime particular dito de outro jeito
+  const regime: ClassRegime = c.type === "particular" || input.individual ? "particular" : (input.regime ?? "regular");
+  if (regime === "open_entry" && !moduleId) throw invalid("regime", "Oferta open-entry precisa de um módulo: é o nível que o aluno vai reservar.");
+  const capacity = regime === "particular" ? 1 : (input.capacity ?? c.capacity);
   if (capacity < 1) throw invalid("capacity", "Vagas precisa ser maior que zero");
 
   if (input.schedules.length === 0) throw invalid("schedules", "Informe ao menos um horário");
@@ -194,7 +198,7 @@ export async function validateClassGroup(db: Db, ctx: ServiceContext, input: Cla
       roomId: input.roomId ?? null,
       modality,
       capacity,
-      individual,
+      regime,
       startsOn: input.startsOn,
       endsOn: input.endsOn,
     },

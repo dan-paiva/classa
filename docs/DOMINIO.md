@@ -298,16 +298,26 @@ Há dois regimes de aula em grupo. A diferença é só **onde o aluno está pres
 
 O que **não** muda: a escola publica os horários dos dois jeitos. Uma oferta open-entry é uma turma como qualquer outra — professor titular, sala, grade semanal, vagas — e gera aulas pelo mesmo job (5.2). A diferença é que ninguém está matriculado nela: as vagas ficam abertas. É por isso que o aluno open-entry cai com professores diferentes sem precisar de nenhuma regra nova — ele reservou em ofertas diferentes.
 
-**Reserva:**
-- O aluno só enxerga e só reserva aula cujo **módulo da oferta é igual ao módulo da matrícula dele**. É isso que quer dizer "só no nível dele".
-- Respeita as vagas da oferta, a situação do aluno (3.2) e o saldo de créditos.
-- Debita como qualquer aula; cancelar dentro da janela devolve, fora não (5.5, **decisão D2**).
-- Sem choque com outra aula do próprio aluno, considerando a duração inteira.
-- Antecedência mínima para reservar: a mesma janela de cancelamento do curso (**decisão D13**).
+**Reserva.** Valida em ordem, e o primeiro erro bloqueia:
+1. **nível**: o módulo da oferta tem de ser igual ao módulo da matrícula. É isso que quer dizer "só no nível dele";
+2. **situação do aluno**: `cancelado`, `inativo`, `suspenso`, `congelado` e `inadimplente` não marcam aula nova (3.2);
+3. **período**: a aula cai dentro do contrato da matrícula;
+4. **antecedência**: a mesma janela de cancelamento do curso — quem não pode desmarcar também não marca em cima da hora (**decisão D13**);
+5. **saldo**: ver abaixo;
+6. **choque**: sem outra aula do próprio aluno no horário, considerando a duração inteira;
+7. **vaga**: dentro das vagas da oferta, conferido com a aula travada para duas reservas simultâneas não passarem do limite.
+
+**Saldo disponível = saldo do extrato − aulas já reservadas que ainda não aconteceram.** O crédito só é debitado quando a aula acontece (5.5); olhar só o extrato deixaria o aluno com uma aula no pacote reservar o semestre inteiro. Cancelar devolve a reserva ao disponível na hora.
+
+O resto é igual ao regime regular: o assento é a mesma linha de `aula_aluno`, e presença, falta e cancelamento fora da janela debitam do mesmo jeito (**decisão D2**).
+
+**Quem reserva** é o `auto_agenda` do curso (4.1): o próprio aluno pela área dele, ou só a secretaria. As sete validações acima valem igual nos dois casos.
 
 **Nível do aluno** é o módulo da matrícula — não há campo novo no aluno, porque quem estuda dois cursos tem um nível em cada. Muda **só administrativamente**: pelo fluxo de mudança de nível (7.5) ou por edição da matrícula por quem tem a área acadêmica. Nunca muda sozinho por aulas cumpridas nem por resultado lançado pelo professor.
 
 **Trocar de nível** afeta só reserva futura: aula já reservada no módulo antigo continua valendo e o aluno é avisado (**decisão D14**).
+
+**Duas ofertas no mesmo horário exigem professores diferentes** — não é regra do open-entry, é a agenda do professor (5.3), que já não deixa ele dar duas aulas ao mesmo tempo. Vale lembrar na hora de montar a grade: uma escola que quer três turmas open-entry às 19h precisa de três professores.
 
 ### 5.10 Agenda geral
 Uma tela só com tudo que ocupa hora: aula (5.3), evento, reunião e nivelamento (5.8).

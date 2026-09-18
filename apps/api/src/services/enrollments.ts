@@ -18,6 +18,7 @@ import {
   student,
   type CreditKind,
   type Modality,
+  type ClassRegime,
 } from "@classa/db";
 import { addDays, collaboratorDiscountCents, dateInZone } from "@classa/domain";
 import { audit } from "../http/audit.ts";
@@ -37,8 +38,12 @@ async function activeCount(db: Db, classGroupId: string) {
   return row?.n ?? 0;
 }
 
-/** Inscreve a matrícula nas aulas agendadas da turma dentro do período dela. */
+/**
+ * Inscreve a matrícula nas aulas agendadas da turma dentro do período dela.
+ * Open-entry não tem turma e não passa por aqui: lá cada aula é uma reserva (DOMINIO.md §5.9).
+ */
 async function enrollInLessons(db: Db, ctx: ServiceContext, e: typeof enrollment.$inferSelect) {
+  if (!e.classGroupId) return 0;
   const lessons = await db
     .select({ id: lesson.id, startsAt: lesson.startsAt })
     .from(lesson)
@@ -70,7 +75,12 @@ export async function createEnrollment(
   ctx: ServiceContext,
   input: {
     studentId: string;
-    classGroupId: string;
+    /** Obrigatória fora do open-entry. */
+    classGroupId?: string | null;
+    /** Open-entry: o nível do aluno, já que não há turma. */
+    regime?: ClassRegime;
+    moduleId?: string | null;
+    courseId?: string;
     packageLessons?: number;
     startsOn?: string;
     endsOn?: string;
@@ -81,14 +91,33 @@ export async function createEnrollment(
 ) {
   const s = await getStudentRow(ctx.db, ctx, input.studentId);
   if (["cancelado", "inativo"].includes(s.status)) throw unprocessable("Aluno cancelado ou inativo não pode ser matriculado. Reative o aluno antes.");
-  const cg = await getClassGroupRow(ctx.db, ctx, input.classGroupId);
-  if (cg.deactivatedAt) throw unprocessable("A turma está inativa.");
-  const [c] = await ctx.db.select().from(course).where(eq(course.id, cg.courseId));
+
+  const regime: ClassRegime = input.regime ?? "regular";
+  const cg = input.classGroupId ? await getClassGroupRow(ctx.db, ctx, input.classGroupId) : null;
+  if (regime === "open_entry") {
+    if (cg) throw invalid("classGroupId", "Matrícula open-entry não fica presa a uma turma.");
+    if (!input.courseId) throw invalid("courseId", "Escolha o curso");
+    if (!input.moduleId) throw invalid("moduleId", "Escolha o nível: é ele que limita o que o aluno pode reservar.");
+  } else if (!cg) {
+    throw invalid("classGroupId", "Escolha a turma");
+  }
+  if (cg?.deactivatedAt) throw unprocessable("A turma está inativa.");
+  if (cg && input.regime && cg.regime !== regime) throw invalid("regime", `A turma "${cg.name}" é do regime ${cg.regime}.`);
+
+  const courseId = cg?.courseId ?? input.courseId!;
+  const [c] = await ctx.db.select().from(course).where(and(eq(course.id, courseId), eq(course.tenantId, ctx.tenantId)));
   if (!c || c.deactivatedAt) throw unprocessable("O curso está inativo.");
+
+  const moduleId = cg ? cg.moduleId : input.moduleId!;
+  if (regime === "open_entry") {
+    const [m] = await ctx.db.select().from(courseModule).where(and(eq(courseModule.id, moduleId!), eq(courseModule.courseId, c.id)));
+    if (!m) throw invalid("moduleId", "Módulo não pertence ao curso");
+    if (m.deactivatedAt) throw invalid("moduleId", "Módulo inativo");
+  }
 
   const packageLessons = input.packageLessons ?? c.packageLessons;
   if (!Number.isInteger(packageLessons) || packageLessons < 1) throw invalid("packageLessons", "Pacote precisa ter ao menos 1 aula");
-  const modality = input.modality ?? cg.modality;
+  const modality = input.modality ?? cg?.modality ?? c.modalities[0]!;
   if (!c.modalities.includes(modality)) throw invalid("modality", "Modalidade não aceita por este curso");
   // aluno de empresa: cursos liberados e quem paga
   let contractInput = input.contract;
@@ -105,16 +134,19 @@ export async function createEnrollment(
     }
   }
   const startsOn = input.startsOn ?? today(ctx);
-  const endsOn = input.endsOn ?? (addDays(startsOn, 365) < cg.endsOn ? addDays(startsOn, 365) : cg.endsOn);
+  const limit = addDays(startsOn, 365);
+  const endsOn = input.endsOn ?? (cg && limit > cg.endsOn ? cg.endsOn : limit);
   if (endsOn < startsOn) throw invalid("endsOn", "O fim do contrato precisa ser depois do início");
 
   return ctx.db.transaction(async (tx) => {
-    // trava a turma para a contagem de vagas não correr em paralelo
-    await tx.execute(sql`select id from class_group where id = ${cg.id} for update`);
-    if ((await activeCount(tx, cg.id)) >= cg.capacity) throw unprocessable(`A turma "${cg.name}" está cheia (${cg.capacity} vagas).`);
+    if (cg) {
+      // trava a turma para a contagem de vagas não correr em paralelo
+      await tx.execute(sql`select id from class_group where id = ${cg.id} for update`);
+      if ((await activeCount(tx, cg.id)) >= cg.capacity) throw unprocessable(`A turma "${cg.name}" está cheia (${cg.capacity} vagas).`);
+    }
     const [e] = await tx
       .insert(enrollment)
-      .values({ tenantId: ctx.tenantId, studentId: s.id, courseId: c.id, classGroupId: cg.id, modality, packageLessons, startsOn, endsOn })
+      .values({ tenantId: ctx.tenantId, studentId: s.id, courseId: c.id, regime, classGroupId: cg?.id ?? null, moduleId, modality, packageLessons, startsOn, endsOn })
       .returning();
     await tx.insert(creditEntry).values({ tenantId: ctx.tenantId, enrollmentId: e!.id, kind: "contratacao", amount: packageLessons, actorId: ctx.actorId });
     const lessons = await enrollInLessons(tx, ctx, e!);
@@ -152,10 +184,12 @@ export async function reactivateEnrollment(ctx: ServiceContext, id: string) {
   if (!before.endedAt) throw unprocessable("A matrícula já está ativa.");
   const s = await getStudentRow(ctx.db, ctx, before.studentId);
   if (["cancelado", "inativo"].includes(s.status)) throw unprocessable("Reative o aluno antes da matrícula.");
-  const cg = await getClassGroupRow(ctx.db, ctx, before.classGroupId);
+  const cg = before.classGroupId ? await getClassGroupRow(ctx.db, ctx, before.classGroupId) : null;
   return ctx.db.transaction(async (tx) => {
-    await tx.execute(sql`select id from class_group where id = ${cg.id} for update`);
-    if ((await activeCount(tx, cg.id)) >= cg.capacity) throw unprocessable(`A turma "${cg.name}" está cheia.`);
+    if (cg) {
+      await tx.execute(sql`select id from class_group where id = ${cg.id} for update`);
+      if ((await activeCount(tx, cg.id)) >= cg.capacity) throw unprocessable(`A turma "${cg.name}" está cheia.`);
+    }
     const [row] = await tx.update(enrollment).set({ endedAt: null }).where(eq(enrollment.id, id)).returning();
     await enrollInLessons(tx, ctx, row!);
     await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "enrollment", entityId: id, action: "reactivate", before, after: row });
@@ -167,6 +201,7 @@ export async function reactivateEnrollment(ctx: ServiceContext, id: string) {
 export async function transferEnrollment(ctx: ServiceContext, id: string, classGroupId: string) {
   const before = await getEnrollmentRow(ctx.db, ctx, id);
   if (before.endedAt) throw unprocessable("A matrícula está encerrada.");
+  if (before.regime === "open_entry") throw unprocessable("Matrícula open-entry não fica presa a turma: mude o nível dela.");
   if (before.classGroupId === classGroupId) throw invalid("classGroupId", "Escolha outra turma");
   const target = await getClassGroupRow(ctx.db, ctx, classGroupId);
   if (target.courseId !== before.courseId) throw invalid("classGroupId", "A turma precisa ser do mesmo curso. Para trocar de curso, encerre e abra outra matrícula.");
@@ -175,7 +210,8 @@ export async function transferEnrollment(ctx: ServiceContext, id: string, classG
     await tx.execute(sql`select id from class_group where id = ${target.id} for update`);
     if ((await activeCount(tx, target.id)) >= target.capacity) throw unprocessable(`A turma "${target.name}" está cheia.`);
     await removeFromFutureLessons(tx, ctx, id);
-    const [row] = await tx.update(enrollment).set({ classGroupId: target.id }).where(eq(enrollment.id, id)).returning();
+    // o nível acompanha a turma: é ele que vale nos dois regimes
+    const [row] = await tx.update(enrollment).set({ classGroupId: target.id, moduleId: target.moduleId }).where(eq(enrollment.id, id)).returning();
     await enrollInLessons(tx, ctx, row!);
     await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "enrollment", entityId: id, action: "update", before, after: row });
     return row!;
@@ -240,8 +276,9 @@ export async function listEnrollments(ctx: ServiceContext, filters: { studentId?
     .innerJoin(student, eq(student.id, enrollment.studentId))
     .innerJoin(person, eq(person.id, student.personId))
     .innerJoin(course, eq(course.id, enrollment.courseId))
-    .innerJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
-    .leftJoin(courseModule, eq(courseModule.id, classGroup.moduleId))
+    // left: matrícula open-entry não tem turma e sumiria de todas as telas
+    .leftJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
+    .leftJoin(courseModule, eq(courseModule.id, enrollment.moduleId))
     .where(
       and(
         eq(enrollment.tenantId, ctx.tenantId),

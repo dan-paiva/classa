@@ -17,6 +17,7 @@ import {
   workflowCard,
   workflowTransition,
   type PaymentMethod,
+  courseModule,
 } from "@classa/db";
 import {
   addDays,
@@ -60,11 +61,13 @@ async function studentName(ctx: ServiceContext, studentId: string) {
 
 async function enrollmentLabel(ctx: ServiceContext, enrollmentId: string) {
   const [row] = await ctx.db
-    .select({ studentName: person.name, className: classGroup.name, endedAt: enrollment.endedAt })
+    .select({ studentName: person.name, className: sql<string | null>`coalesce(${classGroup.name}, ${courseModule.name})`, endedAt: enrollment.endedAt })
     .from(enrollment)
     .innerJoin(student, eq(student.id, enrollment.studentId))
     .innerJoin(person, eq(person.id, student.personId))
-    .innerJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
+    // left: matrícula open-entry não tem turma (DOMINIO.md §5.9)
+    .leftJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
+    .leftJoin(courseModule, eq(courseModule.id, enrollment.moduleId))
     .where(and(eq(enrollment.id, enrollmentId), eq(enrollment.tenantId, ctx.tenantId)));
   if (!row) throw invalid("enrollmentId", "Matrícula não encontrada");
   return row;
@@ -344,7 +347,8 @@ export async function renewalQueue(ctx: ServiceContext) {
     .from(enrollment)
     .innerJoin(student, eq(student.id, enrollment.studentId))
     .innerJoin(person, eq(person.id, student.personId))
-    .innerJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
+    // left: matrícula open-entry não tem turma (DOMINIO.md §5.9)
+    .leftJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
     .innerJoin(course, eq(course.id, enrollment.courseId))
     .where(and(eq(enrollment.tenantId, ctx.tenantId), isNull(enrollment.endedAt), sql`${enrollment.endsOn} <= ${limit}`))
     .orderBy(asc(enrollment.endsOn));
@@ -520,7 +524,8 @@ export async function flowOptions(ctx: ServiceContext, flowKey: string) {
           .from(enrollment)
           .innerJoin(student, eq(student.id, enrollment.studentId))
           .innerJoin(person, eq(person.id, student.personId))
-          .innerJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
+          // left: matrícula open-entry não tem turma (DOMINIO.md §5.9)
+          .leftJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
           .where(and(eq(enrollment.tenantId, ctx.tenantId), isNull(enrollment.endedAt)))
           .orderBy(asc(person.name)),
       };

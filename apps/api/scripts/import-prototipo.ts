@@ -328,7 +328,7 @@ async function main() {
     const enrollmentsOf = new Map<string, Set<string>>();
     for (const e of await db.select({ studentId: enrollment.studentId, classGroupId: enrollment.classGroupId }).from(enrollment).where(and(eq(enrollment.tenantId, school.id), isNull(enrollment.endedAt)))) {
       const set = enrollmentsOf.get(e.studentId) ?? new Set<string>();
-      set.add(e.classGroupId);
+      if (e.classGroupId) set.add(e.classGroupId);
       enrollmentsOf.set(e.studentId, set);
     }
 

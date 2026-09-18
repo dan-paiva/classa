@@ -1,4 +1,4 @@
-import { MODALITIES } from "@classa/db";
+import { CLASS_REGIMES, MODALITIES } from "@classa/db";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
@@ -67,6 +67,7 @@ export const scheduleRoutes = new Hono<AppEnv>()
         teacherId: uuid.nullish(),
         roomId: uuid.nullish(),
         modality: z.enum(MODALITIES).optional(),
+        regime: z.enum(CLASS_REGIMES).optional(),
         capacity: z.number().int().optional(),
         startsOn: isoDate,
         endsOn: isoDate,
