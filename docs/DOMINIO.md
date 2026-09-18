@@ -1,6 +1,7 @@
 # Classa: modelo de domínio
 
 17/09/2026 · derivado da leitura completa do protótipo de navegação (fora do repositório)
+18/09/2026 · revisto com o retorno da apresentação: identidade da pessoa (3.1, 3.4), open-entry (5.9), agenda geral (5.10) e fluxo de entrada do aluno (7.5.1)
 
 Este documento é a fonte da verdade das entidades, relações e regras do Classa. Cada parte nova do sistema é conferida contra ele antes de ser construída.
 
@@ -27,6 +28,7 @@ flowchart LR
   P --> PR[Professor]
   P --> CO[Colaborador]
   P --> U[Usuário]
+  P --> LD[Lead]
   CU[Curso] --> MO[Módulo]
   CU --> TU[Turma / oferta]
   PR --> HB[Habilitação]
@@ -35,6 +37,10 @@ flowchart LR
   MA --> TU
   MA --> LC[Lançamento de crédito]
   AU --> PS[Presença]
+  MA --> RS[Reserva open-entry]
+  RS --> AU
+  AG["Agenda geral"] --> AU
+  AG --> EV["Evento, reunião, nivelamento"]
   MA --> CT[Contrato]
   CT --> PA[Parcela]
   PA --> PG[Pagamento]
@@ -47,17 +53,38 @@ As tabelas completas de cada contexto estão nas seções seguintes.
 ## 3. Pessoas
 
 ### 3.1 Pessoa
-Ficha única. Aluno, professor, colaborador e usuário apontam para ela.
+Ficha única e **âncora de identidade**: aluno, professor, colaborador, usuário e lead apontam para ela. A pessoa nasce no primeiro contato — inclusive como lead — e o mesmo id a acompanha até o fim. Não existe "virar aluno": existe ganhar o papel de aluno.
 
 | Campo | Regra |
 | --- | --- |
+| id | UUID, imutável. É ele que atravessa lead → aluno → ex-aluno |
 | nome | obrigatório, 2 a 120 caracteres |
-| e-mail | opcional; **único por escola** quando preenchido (**corrigido**) |
-| CPF | opcional; guardado só com dígitos, dígito verificador validado, **único por escola** (**corrigido**) |
+| CPF | opcional; só dígitos, dígito verificador validado, **único por escola**. Chave de reconciliação (3.1.2) |
 | telefone | opcional, só dígitos |
 | data de nascimento | opcional |
 
-Ao cadastrar com CPF ou e-mail que já existem, o sistema oferece usar a pessoa existente em vez de duplicar. O protótipo prometia isso e não fazia (**corrigido**).
+O e-mail saiu da ficha e virou lista (3.1.1), porque a mesma pessoa pode ter um pessoal e um corporativo.
+
+**Por que o CPF não é chave primária** (**decisão D11**): o lead entra antes de o comercial coletar o CPF, então a identidade precisa existir sem ele. Somam-se: CPF digitado errado exige correção, e corrigir chave primária cascateia por todas as tabelas; CPF é dado pessoal e, como chave estrangeira, se espalharia pelo banco inteiro, atrapalhando a anonimização (princípio 3); e aluno estrangeiro pode não ter CPF. O id é UUID; o CPF é chave única.
+
+#### 3.1.1 E-mails da pessoa
+| Campo | Regra |
+| --- | --- |
+| pessoa | obrigatório |
+| e-mail | **único por escola**, comparado em minúsculas |
+| tipo | `pessoal` ou `corporativo`; no máximo um de cada por pessoa |
+| principal | um por pessoa; é o usado em cobrança e avisos |
+
+O login resolve o e-mail para a pessoa. Dois e-mails da mesma pessoa levam à mesma ficha (3.4).
+
+#### 3.1.2 Deduplicação
+Ao cadastrar, o sistema procura pessoa existente nesta ordem:
+
+1. **CPF igual** → é a mesma pessoa, sem perguntar. O cadastro vira atualização e o papel novo é acrescentado.
+2. **E-mail igual**, de qualquer tipo → é a mesma pessoa, sem perguntar.
+3. **Nome e data de nascimento iguais**, sem CPF dos dois lados → o sistema **oferece** a existente; quem cadastra decide.
+
+O protótipo prometia deduplicação e não fazia (**corrigido**). Nunca se cria pessoa com CPF que já existe: o índice único rejeita, e a tela trata isso como "achei a pessoa", não como erro.
 
 ### 3.2 Aluno
 | Campo | Regra |
@@ -91,7 +118,20 @@ Regras de habilitação (do protótipo):
 
 ### 3.4 Colaborador e usuário
 - **Colaborador:** pessoa com cargo e departamento. Pode existir sem acesso ao sistema.
-- **Usuário:** credencial de acesso que sempre nasce de uma pessoa. Detalhes em [7. Acesso](#7-acesso).
+- **Usuário:** credencial de acesso que sempre nasce de uma pessoa. Detalhes em [8. Acesso](#8-acesso).
+
+**Colaborador que também é aluno.** É um ser humano só, uma pessoa só, com dois acessos:
+
+| | Entra por | Perfil | Enxerga |
+| --- | --- | --- | --- |
+| Trabalho | e-mail corporativo | colaborador, com nível e áreas | o que a área dele permite |
+| Estudo | e-mail pessoal | aluno | só a área do aluno |
+
+- Os dois vínculos apontam para a **mesma pessoa** e, portanto, para o mesmo CPF. Não há dois cadastros.
+- Cada vínculo tem perfil, situação e bloqueio próprios. Bloquear o acesso de trabalho não tira as aulas dele.
+- Trocar de e-mail não cria pessoa nova.
+- A sessão é de **um vínculo por vez**. Quem tem os dois escolhe por qual entra e, para trocar, sai e entra de novo (**decisão D12**).
+- O perfil de trabalho **não** dá acesso aos próprios dados de aluno: se a área dele já não permitia ver alunos, continua não permitindo. O caminho é o mesmo de qualquer aluno.
 
 ## 4. Catálogo
 
@@ -108,7 +148,7 @@ Tipos: `grupo`, `particular`, `hibrido`, `workshop`, `turmas_dedicadas`. O tipo 
 | modalidades | online, presencial | a matrícula escolhe uma das aceitas |
 
 Também vêm do protótipo, e ainda faltam no Classa:
-- `auto_agenda`: o aluno pode agendar sozinho ou só a secretaria.
+- `auto_agenda`: quem reserva a vaga open-entry (5.9) — o próprio aluno pela área dele, ou só a secretaria. Não muda nenhuma outra regra da reserva: nível, vaga, saldo e choque valem igual nos dois casos.
 - `exige_disponibilidade`: a alocação individual bloqueia fora da disponibilidade do aluno.
 - idioma.
 
@@ -145,11 +185,14 @@ Só em cursos `grupo` e `turmas_dedicadas`. Tem ordem, nome e cor. O **módulo i
 | professor titular | precisa estar habilitado e ativo (**corrigido**) |
 | sala | precisa aceitar a modalidade |
 | modalidade | online ou presencial |
+| regime | `regular`, `open_entry` ou `particular` (5.9). Nada a ver com modalidade |
 | vagas | padrão = alunos por aula do curso |
 | horários | lista de (dia da semana, hora de início com minutos) |
 | período | início e fim. **Aulas só são geradas dentro dele** (**corrigido**) |
 
 A aula particular (curso particular ou módulo individual) é uma turma de 1 vaga criada na alocação da matrícula.
+
+**Modalidade e regime são eixos diferentes** e a palavra já estava tomada: modalidade é *online ou presencial*; regime é *como o aluno se liga à turma* (5.9). Uma oferta open-entry presencial é uma combinação normal.
 
 ### 5.2 Geração das aulas
 - Um job gera as aulas de cada turma para as próximas N semanas (padrão 8) e grava cada uma.
@@ -202,7 +245,7 @@ Regras:
 - **Trocar professor:** só em aula futura e só para professor habilitado, ativo, disponível e sem choque (**corrigido**: o protótipo validava só a habilitação e permitia troca em aula passada). Em aula passada, a correção é pelo fluxo de substituição, com justificativa.
 
 ### 5.5 Inscrição na aula
-**Decisão D1.** A proposta padrão é inscrição fixa: a matrícula ativa numa turma inscreve o aluno em todas as aulas futuras dela. O protótipo funcionava assim, sem reserva por data.
+**D1 decidida: depende do regime.** No **regular**, a matrícula ativa numa turma inscreve o aluno em todas as aulas futuras dela — era assim no protótipo, sem reserva por data. No **open-entry** não há inscrição automática: cada aula é uma reserva (5.9). O **particular** segue o regular, numa turma de uma vaga.
 
 Por aula, grava-se `aula_aluno` com:
 - situação: `inscrito`, `cancelou`, `presente`, `falta`;
@@ -229,13 +272,51 @@ Validação em ordem; o primeiro erro bloqueia (do protótipo):
 
 O valor pago ao professor por aula particular é da alocação (padrão R$ 120).
 
-### 5.8 Eventos e reuniões
-- Tipo `reuniao` ou `evento`; título; início e fim no mesmo dia (fim > início); local ou link; participantes (colaboradores, professores, alunos).
+### 5.8 Eventos, reuniões e nivelamentos
+- Tipo `reuniao`, `evento` ou `nivelamento`; título; início e fim no mesmo dia (fim > início); local ou link; participantes (colaboradores, professores, alunos).
 - Choque com aula de participante é **aviso**; "salvar mesmo assim" grava.
+- **Nivelamento** é o tipo que o fluxo de entrada agenda (7.5.1). Além dos campos acima:
+  - avaliado: **lead ou aluno** — é o único item de agenda que aceita quem ainda não é aluno;
+  - avaliador: professor ou colaborador da área pedagógica;
+  - resultado: módulo sugerido e observação, preenchidos depois de realizado.
+- O resultado **não** matricula ninguém e **não** muda nível sozinho: ele alimenta a decisão administrativa (5.9).
 - Permissões:
   - criar: Colaborador;
   - editar: Editor, ou o autor;
   - excluir: Gestor, ou o autor.
+
+### 5.9 Open-entry
+Há dois regimes de aula em grupo. A diferença é só **onde o aluno está preso**:
+
+| | Regular | Open-entry |
+| --- | --- | --- |
+| Turma | o aluno pertence a uma | o aluno não pertence a nenhuma |
+| Horário | fixo, o da turma | escolhido aula a aula |
+| Professor | o titular da turma | o de cada aula que ele pegar |
+| Nível | o da turma | o da matrícula do aluno |
+| Inscrição na aula | automática em todas as futuras | reserva, uma a uma |
+
+O que **não** muda: a escola publica os horários dos dois jeitos. Uma oferta open-entry é uma turma como qualquer outra — professor titular, sala, grade semanal, vagas — e gera aulas pelo mesmo job (5.2). A diferença é que ninguém está matriculado nela: as vagas ficam abertas. É por isso que o aluno open-entry cai com professores diferentes sem precisar de nenhuma regra nova — ele reservou em ofertas diferentes.
+
+**Reserva:**
+- O aluno só enxerga e só reserva aula cujo **módulo da oferta é igual ao módulo da matrícula dele**. É isso que quer dizer "só no nível dele".
+- Respeita as vagas da oferta, a situação do aluno (3.2) e o saldo de créditos.
+- Debita como qualquer aula; cancelar dentro da janela devolve, fora não (5.5, **decisão D2**).
+- Sem choque com outra aula do próprio aluno, considerando a duração inteira.
+- Antecedência mínima para reservar: a mesma janela de cancelamento do curso (**decisão D13**).
+
+**Nível do aluno** é o módulo da matrícula — não há campo novo no aluno, porque quem estuda dois cursos tem um nível em cada. Muda **só administrativamente**: pelo fluxo de mudança de nível (7.5) ou por edição da matrícula por quem tem a área acadêmica. Nunca muda sozinho por aulas cumpridas nem por resultado lançado pelo professor.
+
+**Trocar de nível** afeta só reserva futura: aula já reservada no módulo antigo continua valendo e o aluno é avisado (**decisão D14**).
+
+### 5.10 Agenda geral
+Uma tela só com tudo que ocupa hora: aula (5.3), evento, reunião e nivelamento (5.8).
+
+- **Filtros:** período, tipo, professor, sala, turma, curso, módulo e pessoa.
+- **Recortes prontos:** minha agenda, agenda do professor, agenda da sala, vagas open-entry abertas.
+- **Quem vê o quê** sai de 8: professor vê as próprias aulas e os eventos em que é participante; aluno vê as próprias aulas, as vagas open-entry do nível dele e os próprios nivelamentos; colaborador vê conforme a área.
+- Aula e evento continuam em tabelas separadas: a agenda é uma **leitura unificada**, não uma tabela nova. Aula tem folha, crédito e presença que evento não tem, e juntar as duas coisas sairia caro (princípio 2).
+- Item cancelado aparece riscado, não some.
 
 ## 6. Comercial e financeiro
 
@@ -243,7 +324,9 @@ O valor pago ao professor por aula particular é da alocação (padrão R$ 120).
 | Campo | Regra |
 | --- | --- |
 | aluno, curso | o curso não muda. Para trocar, encerra e abre outra |
-| módulo ou turma atual | obrigatório se o curso tem itens |
+| regime | `regular`, `open_entry` ou `particular` (5.9) |
+| módulo | obrigatório se o curso tem módulos. No open-entry é o **nível** do aluno |
+| turma | obrigatória no regular e no particular; **vazia no open-entry** |
 | modalidade | uma das aceitas pelo curso |
 | pacote | aulas contratadas, > 0 |
 | início e fim do contrato | por matrícula (**decisão D4**; no protótipo ficavam no aluno) |
@@ -255,6 +338,8 @@ Não existe mais "aulas usadas" editável. **Saldo = soma do extrato de crédito
 Regras:
 - Vagas da turma **bloqueiam** ao criar, reativar ou trocar de turma (**corrigido**).
 - Trocar de módulo ou turma limpa a alocação individual.
+- **Mais de uma matrícula ativa ao mesmo tempo é permitido**, e é caso normal: uma regular e uma open-entry no mesmo curso (turma fixa mais aulas avulsas), ou matrículas em cursos diferentes.
+- Cada matrícula tem pacote, saldo, contrato e parcelas próprios. **Créditos nunca se misturam entre matrículas** (**decisão D15**): ao reservar ou lançar presença, o sistema debita a matrícula do regime daquela aula e, se houver mais de uma candidata, quem agenda escolhe.
 
 ### 6.2 Extrato de créditos
 Criado a partir das políticas e textos do protótipo, que nunca debitavam nada.
@@ -338,10 +423,12 @@ Regras:
 ### 6.5 Leads e funil
 - **Etapas:** `captado` → `contato` → `nivelamento` → `proposta` → `matriculado`, ou `perdido`.
 - **Perder:** exige motivo (preço, horário, sem resposta, escolheu outra escola, adiou os estudos). **Reabrir** volta à etapa anterior.
+- **Captar:** cria a pessoa na hora (3.1) e o lead aponta para ela. É daí que vem o id que acompanha a pessoa até o fim (**corrigido**: no protótipo, e na primeira versão do Classa, lead e aluno tinham ids separados).
 - **Converter:**
   - só a partir de `proposta`;
-  - cria ou reaproveita a pessoa (deduplicação por CPF ou e-mail) e cria o aluno;
-  - abre a matrícula com curso e disponibilidade já preenchidos.
+  - **a pessoa já existe**: a conversão só acrescenta o papel de aluno. Não cria ficha nova e não duplica (**corrigido**);
+  - abre a matrícula com curso, regime e disponibilidade já preenchidos;
+  - o lead sai do funil e some dos quadros do comercial. O histórico dele fica na pessoa.
 - **Campos:** nome, e-mail, telefone, CPF, origem, campanha, curso de interesse, consultor, temperatura, próxima ação e data, disponibilidade declarada, consentimento LGPD.
 - **Alerta:** proposta parada há 14 dias ou mais.
 
@@ -389,7 +476,8 @@ Motor comum:
 - **Etapas:** cada etapa tem requisitos para entrar e um efeito ao entrar. Etapas finais e alternativas.
 - **Mover pulando etapas:** permitido. **Todos os efeitos das etapas puladas são executados em ordem**, e os requisitos de cada uma são conferidos (**corrigido**: no protótipo, pular etapas pulava efeitos e quebrava).
 - **Voltar etapa:** não desfaz efeitos. O card mostra o aviso.
-- Quem opera: Colaborador ou acima, com a área do fluxo.
+- **Área por etapa:** a área é da **etapa**, não do fluxo. O card aparece no quadro do time dono da etapa em que está, e quem opera é Colaborador ou acima **daquela área**. Fluxo de área única é o caso particular em que todas as etapas têm a mesma área.
+- **Passagem de bastão:** ao entrar numa etapa de outra área, o card sai de um quadro e entra no outro. Quem passou continua **vendo** o card, para poder responder ao aluno, mas não o move mais.
 
 | Fluxo | Etapas | Efeito |
 | --- | --- | --- |
@@ -401,6 +489,28 @@ Motor comum:
 | Renovação | vence em breve → contato → proposta (exige pacote e valor) → renovado / não renovou | renovado executa 6.6 |
 | Cancelamento e retenção | pedido (exige motivo) → tentativa (exige oferta) → retido / cancelado | cancelado executa o cancelamento do aluno (3.2) |
 | Campanhas | ideia → produção (exige canal e público) → no ar (exige início e orçamento) → encerrada (exige leads) | nenhum |
+| Entrada do aluno | atravessa Comercial, Pedagógico e Administrativo | detalhe em 7.5.1 |
+
+#### 7.5.1 Entrada do aluno
+É o fluxo que atravessa mais áreas, e o que justificou a área por etapa. Do primeiro contato à matrícula:
+
+| # | Etapa | Área | Exige para entrar | Efeito ao entrar |
+| --- | --- | --- | --- | --- |
+| 1 | Dados | Comercial | CPF, e-mail, curso de interesse, disponibilidade, pacote pretendido | grava na pessoa (3.1); o CPF reconcilia se ela já existir |
+| 2 | Nivelamento a marcar | Pedagógico | — | o card entra no quadro do pedagógico com a disponibilidade declarada |
+| 3 | Nivelamento marcado | Pedagógico | data, hora, avaliador | **cria o nivelamento na agenda** (5.8), com o lead como avaliado |
+| 4 | Data comunicada | Comercial | — | registra que o comercial avisou o lead |
+| 5 | Nivelado | Pedagógico | módulo sugerido | grava o resultado no nivelamento |
+| 6 | Matrícula | Administrativo (**decisão D16**) | regime, pacote, e turma se for regular | **converte o lead em aluno** (6.5) e abre a matrícula no regime escolhido |
+| 7 | Concluída | — | — | final |
+
+Saídas alternativas — é aqui que o fluxo real costuma vazar:
+
+- **Perdido** (Comercial, exige motivo): a qualquer momento. A pessoa fica; o lead sai do funil.
+- **Não compareceu** (Pedagógico): devolve o card para a etapa 2 e conta a falta. Na terceira, vai para *Perdido* com motivo "sem resposta" (**decisão D17**).
+- **Sem vaga na semana pedida** (Pedagógico): o card fica na etapa 2 com a próxima data possível anotada, e o comercial vê para renegociar.
+
+Uma regra vale para o fluxo inteiro: **o nivelamento pode ser agendado para quem ainda é lead**. É a única exceção de 5.8, e é o que permite nivelar antes de matricular.
 
 ### 7.6 Alertas
 | Alerta | Condição |
@@ -486,7 +596,7 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 
 | # | Decisão | Proposta padrão |
 | --- | --- | --- |
-| D1 | O aluno fica fixo numa turma ou reserva aula por aula? | Fixo na turma; reserva avulsa fica para depois (`auto_agenda`) |
+| D1 | ~~O aluno fica fixo numa turma ou reserva aula por aula?~~ | **Decidida em 18/09/2026: os dois.** Regime `regular` = fixo; `open_entry` = reserva. Ver 5.9 |
 | D2 | Falta do aluno e cancelamento fora da janela gastam crédito? | Sim, os dois, configurável por escola |
 | D3 | Janela da fila de renovação | Entra com 60 dias; urgência com 10 |
 | D4 | Contrato por aluno ou por matrícula? | Por matrícula |
@@ -496,6 +606,13 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 | D8 | Quando o aluno vira inadimplente sozinho? | Parcela vencida há mais de 15 dias |
 | D9 | Tolerância de vencimento da parcela | Vence no fim do dia do vencimento |
 | D10 | O que acontece com parcelas futuras quando a matrícula é cancelada? | São canceladas; multa rescisória fica fora do escopo inicial |
+| D11 | CPF é chave primária da pessoa? | Não: o id é UUID e o CPF é chave única. **Decidida em 18/09/2026** (3.1) |
+| D12 | Quem tem acesso de trabalho e de aluno alterna dentro da sessão? | Não; sai e entra pelo outro e-mail |
+| D13 | Antecedência mínima para reservar aula open-entry | A mesma janela de cancelamento do curso |
+| D14 | Trocar de nível cancela reserva futura no módulo antigo? | Não; mantém e avisa o aluno |
+| D15 | Créditos somam entre matrículas do mesmo aluno? | Não; saldo é por matrícula |
+| D16 | Que área matricula no fim do fluxo de entrada? | Administrativo, configurável por escola |
+| D17 | Quantas faltas no nivelamento até perder o lead? | Três; depois vai a `perdido` com motivo "sem resposta" |
 
 ## Ordem de construção
 
@@ -509,3 +626,6 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 8. **Leads, renovação e fluxos kanban.**
 9. **Perfis e acesso completos**, com escopo por registro.
 10. **Painéis, relatórios e alertas.** ✔
+11. **Identidade:** e-mail da pessoa em tabela própria, deduplicação por CPF, pessoa criada já na captação do lead, colaborador-aluno com dois vínculos. **Vem antes das duas seguintes**: as duas mexem em matrícula, e matrícula aponta para pessoa.
+12. **Open-entry:** regime na turma e na matrícula, matrícula sem turma, reserva por aula com trava de nível, de vaga e de choque.
+13. **Agenda geral e fluxo de entrada:** eventos, reuniões e nivelamento; leitura unificada da agenda; área por etapa no motor de fluxos; fluxo de entrada do aluno.
