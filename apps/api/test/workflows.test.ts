@@ -142,7 +142,13 @@ describe("leads", () => {
     await moveLead(ctx, l.id, { to: "avancar" });
     await expect(moveLead(ctx, l.id, { to: "avancar" })).rejects.toMatchObject({ status: 422 });
 
-    const existing = await createStudent(ctx, { person: { name: "Interessada Já Aluna", email: "interessada@exemplo.com" } });
+    // a pessoa nasceu na captação, então cadastrar outra com o mesmo e-mail é
+    // recusado apontando quem já existe (DOMINIO.md §3.1.2)
+    await expect(createStudent(ctx, { person: { name: "Interessada Já Aluna", email: "interessada@exemplo.com" } })).rejects.toMatchObject({
+      status: 409,
+      issues: { existingPersonId: [l.personId] },
+    });
+    const existing = await createStudent(ctx, { personId: l.personId });
     const converted = await convertLead(ctx, l.id);
     expect(converted).toMatchObject({ stage: "matriculado", studentId: existing.id });
 

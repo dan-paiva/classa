@@ -173,7 +173,12 @@ export const membership = pgTable(
   },
   (t) => [
     unique("membership_tenant_user_uq").on(t.tenantId, t.userId),
+    // a mesma pessoa pode ter vínculo de trabalho e de aluno, mas só um de cada (DOMINIO.md §3.4)
+    uniqueIndex("membership_person_profile_uq")
+      .on(t.tenantId, t.personId, t.profileType)
+      .where(sql`${t.personId} is not null`),
     index("membership_user_idx").on(t.userId),
+    index("membership_person_idx").on(t.tenantId, t.personId),
     check("membership_level_range", sql`${t.level} between 1 and 5`),
   ],
 );
@@ -302,8 +307,7 @@ export const person = pgTable(
       .notNull()
       .references(() => tenant.id),
     name: text("name").notNull(),
-    email: text("email"),
-    /** Só dígitos. */
+    /** Só dígitos. Chave de reconciliação da pessoa (DOMINIO.md §3.1.2). */
     cpf: text("cpf"),
     /** Só dígitos. */
     phone: text("phone"),
@@ -312,9 +316,40 @@ export const person = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    uniqueIndex("person_tenant_email_uq").on(t.tenantId, sql`lower(${t.email})`).where(sql`${t.email} is not null`),
     uniqueIndex("person_tenant_cpf_uq").on(t.tenantId, t.cpf).where(sql`${t.cpf} is not null`),
     index("person_tenant_name_idx").on(t.tenantId, t.name),
+  ],
+);
+
+export const PERSON_EMAIL_KINDS = ["pessoal", "corporativo"] as const;
+export type PersonEmailKind = (typeof PERSON_EMAIL_KINDS)[number];
+
+/**
+ * E-mails da pessoa (DOMINIO.md §3.1.1). São vários porque o mesmo ser humano
+ * pode ser colaborador pelo e-mail corporativo e aluno pelo pessoal, sem virar
+ * duas pessoas. O principal é o usado em cobrança e avisos.
+ */
+export const personEmail = pgTable(
+  "person_email",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => person.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    kind: text("kind", { enum: PERSON_EMAIL_KINDS }).notNull(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("person_email_tenant_email_uq").on(t.tenantId, sql`lower(${t.email})`),
+    unique("person_email_person_kind_uq").on(t.personId, t.kind),
+    uniqueIndex("person_email_primary_uq").on(t.personId).where(sql`${t.isPrimary}`),
+    index("person_email_person_idx").on(t.personId),
   ],
 );
 
@@ -862,9 +897,10 @@ export const lead = pgTable(
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenant.id),
-    name: text("name").notNull(),
-    email: text("email"),
-    phone: text("phone"),
+    /** A pessoa nasce na captação: é o id que acompanha até depois de virar aluno (DOMINIO.md §6.5). */
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => person.id),
     origin: text("origin").notNull(),
     campaign: text("campaign"),
     courseId: uuid("course_id").references(() => course.id),
@@ -881,7 +917,7 @@ export const lead = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("lead_tenant_stage_idx").on(t.tenantId, t.stage)],
+  (t) => [index("lead_tenant_stage_idx").on(t.tenantId, t.stage), index("lead_person_idx").on(t.personId)],
 );
 
 export const workflowCard = pgTable(

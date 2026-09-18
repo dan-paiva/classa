@@ -44,6 +44,7 @@ import type { ServiceContext } from "../src/services/context.ts";
 import { addCreditEntry, createEnrollment } from "../src/services/enrollments.ts";
 import { createRoom, createStudent, createTeacher } from "../src/services/people.ts";
 import { listClassGroups } from "../src/services/schedule.ts";
+import { primaryEmailSql } from "../src/services/people.ts";
 
 /* ------------------------------------------------------------------ o arquivo */
 
@@ -267,7 +268,7 @@ async function main() {
 
     /* --------------------------------------------------------------- professores */
     step("Professores");
-    const teachers = await db.select({ id: teacher.id, name: person.name, email: person.email }).from(teacher).innerJoin(person, eq(person.id, teacher.personId)).where(eq(teacher.tenantId, school.id));
+    const teachers = await db.select({ id: teacher.id, name: person.name, email: primaryEmailSql }).from(teacher).innerJoin(person, eq(person.id, teacher.personId)).where(eq(teacher.tenantId, school.id));
     const teacherByEmail = new Set(teachers.filter((t) => t.email).map((t) => key(t.email!)));
     const teacherByName = new Set(teachers.map((t) => key(t.name)));
     for (const t of cad.teachers) {
@@ -318,7 +319,7 @@ async function main() {
     step("Alunos e matrículas");
     const groups = await listClassGroups(ctx);
     const existingStudents = await db
-      .select({ id: student.id, name: person.name, email: person.email })
+      .select({ id: student.id, name: person.name, email: primaryEmailSql })
       .from(student)
       .innerJoin(person, eq(person.id, student.personId))
       .where(eq(student.tenantId, school.id));

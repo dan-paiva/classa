@@ -24,6 +24,7 @@ import {
   updateTeacher,
 } from "../../services/people.ts";
 import { listClassGroups, listLessons } from "../../services/schedule.ts";
+import { primaryEmailSql } from "../../services/people.ts";
 
 const personInput = z.object({
   name: z.string({ error: "Informe o nome" }),
@@ -101,6 +102,7 @@ export const peopleRoutes = new Hono<AppEnv>()
       .select({
         student,
         person,
+        email: primaryEmailSql,
         companyName: sql<string | null>`(select c.name from company c where c.id = ${student.companyId})`,
         activeEnrollments: sql<number>`(select count(*)::int from enrollment e where e.student_id = ${student.id} and e.ended_at is null)`,
         balance: sql<number>`(select coalesce(sum(ce.amount), 0)::int from credit_entry ce join enrollment e on e.id = ce.enrollment_id where e.student_id = ${student.id} and e.ended_at is null)`,
@@ -114,12 +116,15 @@ export const peopleRoutes = new Hono<AppEnv>()
         and(
           eq(student.tenantId, ctx.tenantId),
           status && (STUDENT_STATUSES as readonly string[]).includes(status) ? eq(student.status, status as (typeof STUDENT_STATUSES)[number]) : undefined,
-          q ? sql`(${person.name} ilike ${`%${q}%`} or ${person.email} ilike ${`%${q}%`} or ${person.cpf} like ${`%${q.replace(/\D/g, "") || "-"}%`})` : undefined,
+          q
+            ? sql`(${person.name} ilike ${`%${q}%`} or ${person.cpf} like ${`%${q.replace(/\D/g, "") || "-"}%`}
+                or exists (select 1 from person_email pe where pe.person_id = "person"."id" and pe.email ilike ${`%${q}%`}))`
+            : undefined,
         ),
       )
       .orderBy(person.name);
     return c.json({
-      students: rows.map((r) => ({ ...r.student, person: r.person, companyName: r.companyName, activeEnrollments: r.activeEnrollments, balance: r.balance, overdueInstallments: r.overdue })),
+      students: rows.map((r) => ({ ...r.student, person: { ...r.person, email: r.email }, companyName: r.companyName, activeEnrollments: r.activeEnrollments, balance: r.balance, overdueInstallments: r.overdue })),
     });
   })
 

@@ -35,6 +35,7 @@ import { createRoom, createStudent, createTeacher, setStudentStatus } from "../s
 import { closeMonth, markLinePaid, overrideLessonRate, requestSupport, setClassGroupTeacherRate, computePayroll } from "../src/services/payroll.ts";
 import { createClassGroup, generateLessons, importNationalHolidays } from "../src/services/schedule.ts";
 import { convertLead, createCard, createLead, flowOptions, moveCard, moveLead, updateCard } from "../src/services/workflows.ts";
+import { setPersonEmail } from "../src/services/people.ts";
 
 const SLUG = "demo";
 const TZ = "America/Sao_Paulo";
@@ -89,7 +90,7 @@ async function resetDemo(db: Database) {
   // ordem inversa das dependências
   for (const table of [
     "membership", "invitation", "workflow_transition", "workflow_card", "lead", "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
-    "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "person",
+    "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "person_email", "person",
     "room", "course_module", "course", "audit_log",
   ]) {
     await db.execute(sql.raw(`delete from ${table} where tenant_id = '${id}'`));
@@ -577,6 +578,11 @@ async function main() {
     for (const prof of demoProfiles) {
       const u = await account(prof.email, prof.name);
       await db.insert(membership).values({ tenantId: school!.id, userId: u.id, role: "admin", profileType: prof.profileType, level: prof.level, areas: prof.areas, personId: prof.personId });
+      // mesmo caminho do aceite de convite: o e-mail do login passa a ser da pessoa.
+      // O professor fica com os dois (o pessoal do cadastro e o corporativo daqui).
+      if (prof.personId) {
+        await setPersonEmail(db, { tenantId: school!.id }, prof.personId, prof.email, prof.profileType === "aluno" ? "pessoal" : "corporativo");
+      }
     }
     void personTable;
     log("contas de demonstração: coordenacao@, financeiro@, professor@ e aluno@demo.classa.dev (senha classa-demo-123)");

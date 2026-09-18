@@ -8,15 +8,27 @@ import { listEnrollments } from "../../services/enrollments.ts";
 import { listInstallments } from "../../services/finance.ts";
 import { cancelStudentLesson } from "../../services/lessons.ts";
 import { listLessons } from "../../services/schedule.ts";
+import { primaryEmailSql } from "../../services/people.ts";
+
+/**
+ * A área do aluno é do vínculo de aluno, não da pessoa: quem entrou pelo acesso
+ * de trabalho não chega aqui, mesmo sendo aluno da escola pelo outro acesso.
+ * Sem isso, o colaborador-aluno entraria pelos dois lados (DOMINIO.md §3.4).
+ */
+function ownStudentId(c: { var: AppEnv["Variables"] }) {
+  const t = c.var.tenant;
+  if (t.profileType !== "aluno") return null;
+  return t.studentId;
+}
 
 /** Área do aluno: só os próprios dados, a própria agenda e o próprio financeiro. */
 export const portalRoutes = new Hono<AppEnv>()
   .get("/minha-area", async (c) => {
     const ctx = contextFrom(c);
-    const studentId = c.var.tenant.studentId;
+    const studentId = ownStudentId(c);
     if (!studentId) throw new DomainError(404, "not_found", "Seu usuário não está ligado a um aluno desta escola.");
     const [s] = await ctx.db
-      .select({ id: student.id, status: student.status, name: person.name, email: person.email })
+      .select({ id: student.id, status: student.status, name: person.name, email: primaryEmailSql })
       .from(student)
       .innerJoin(person, eq(person.id, student.personId))
       .where(eq(student.id, studentId));
@@ -51,7 +63,7 @@ export const portalRoutes = new Hono<AppEnv>()
   })
   .post("/minha-area/aulas/:lessonId/:action{cancelar|reagendar}", async (c) => {
     const ctx = contextFrom(c);
-    const studentId = c.var.tenant.studentId;
+    const studentId = ownStudentId(c);
     if (!studentId) throw new DomainError(404, "not_found", "Seu usuário não está ligado a um aluno desta escola.");
     const [own] = await ctx.db
       .select({ enrollmentId: lessonStudent.enrollmentId })
