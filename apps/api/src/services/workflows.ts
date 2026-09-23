@@ -12,6 +12,7 @@ import {
   lesson,
   lessonStudent,
   person,
+  personEmail,
   sql,
   student,
   workflowCard,
@@ -26,7 +27,7 @@ import {
   ENTRY_MAX_NO_SHOWS,
   FLOWS,
   onlyDigits,
-  zonedToUtc,
+  parseSchoolInstant,
   LEAD_LOST_REASONS,
   LEAD_STAGES,
   missingRequired,
@@ -193,11 +194,9 @@ type Effect = (ctx: ServiceContext, data: Record<string, unknown>) => Promise<{ 
 /** Duração do nivelamento marcado pelo fluxo de entrada. */
 const LEVELING_MINUTES = 60;
 
-/** "AAAA-MM-DDTHH:MM" sem fuso é hora da escola; com fuso, vale o que veio. */
 function parseLocalInstant(ctx: ServiceContext, value: string) {
-  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(value);
-  const d = m ? zonedToUtc(m[1]!, m[2]!, ctx.timezone) : new Date(value);
-  if (Number.isNaN(d.getTime())) throw invalid("levelingStartsAt", "Data e hora inválidas");
+  const d = parseSchoolInstant(value, ctx.timezone);
+  if (!d) throw invalid("levelingStartsAt", "Data e hora inválidas");
   return d;
 }
 
@@ -218,6 +217,19 @@ const ENTRY_EFFECTS: Record<string, Effect> = {
     let note = "Dados gravados na ficha da pessoa.";
     if (owner && owner.id !== l.personId) {
       personId = owner.id;
+      // a ficha criada na captação fica para trás; se ela é só de lead, o e-mail vai junto
+      // para a ficha do CPF, em vez de brigar com ela pela unicidade
+      const [{ leadOnly } = { leadOnly: false }] = await ctx.db
+        .select({
+          leadOnly: sql<boolean>`not exists (select 1 from student s where s.person_id = ${l.personId})
+            and not exists (select 1 from teacher t where t.person_id = ${l.personId})
+            and not exists (select 1 from membership m where m.person_id = ${l.personId})`,
+        })
+        .from(person)
+        .where(eq(person.id, l.personId));
+      if (leadOnly && str(d.email)) {
+        await ctx.db.delete(personEmail).where(and(eq(personEmail.personId, l.personId), sql`lower(${personEmail.email}) = ${str(d.email).trim().toLowerCase()}`));
+      }
       await findOrCreatePerson(ctx.db, ctx, { name: l.name, cpf, email: str(d.email) });
       await ctx.db.update(lead).set({ personId }).where(eq(lead.id, l.id));
       note = "O CPF já era de uma pessoa cadastrada: o lead passou a apontar para a ficha dela.";

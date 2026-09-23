@@ -362,7 +362,7 @@ async function eventItems(ctx: ServiceContext, f: AgendaFilters, scope: AgendaSc
   if (participant === null) return [];
 
   const rows = await ctx.db
-    .select({ e: agendaEvent, courseColor: course.color, evaluatedName: sql<string | null>`(select name from person where id = ${agendaEvent.evaluatedPersonId})` })
+    .select({ e: agendaEvent, courseColor: course.color, evaluatedName: sql<string | null>`(select p2.name from person p2 where p2.id = "agenda_event"."evaluated_person_id")` })
     .from(agendaEvent)
     .leftJoin(course, eq(course.id, agendaEvent.courseId))
     .where(
@@ -373,7 +373,7 @@ async function eventItems(ctx: ServiceContext, f: AgendaFilters, scope: AgendaSc
         f.type ? eq(agendaEvent.kind, f.type) : undefined,
         f.courseId ? eq(agendaEvent.courseId, f.courseId) : undefined,
         participant
-          ? sql`exists (select 1 from agenda_event_participant p where p.event_id = ${agendaEvent.id} and p.person_id = ${participant})`
+          ? sql`exists (select 1 from agenda_event_participant p where p.event_id = "agenda_event"."id" and p.person_id = ${participant})`
           : undefined,
         // o aluno vê só os próprios nivelamentos (§5.10)
         scope.kind === "aluno" ? eq(agendaEvent.kind, "nivelamento") : undefined,
@@ -427,11 +427,11 @@ export async function agendaPeople(ctx: ServiceContext) {
     .select({
       id: person.id,
       name: person.name,
-      isTeacher: sql<boolean>`exists (select 1 from teacher t where t.person_id = ${person.id} and t.deactivated_at is null)`,
-      isStudent: sql<boolean>`exists (select 1 from student s where s.person_id = ${person.id} and s.status not in ('cancelado', 'inativo'))`,
-      isStaff: sql<boolean>`exists (select 1 from membership m where m.person_id = ${person.id} and m.tenant_id = ${ctx.tenantId} and m.profile_type in ('admin', 'colaborador') and m.deactivated_at is null)`,
-      isPedagogical: sql<boolean>`exists (select 1 from membership m where m.person_id = ${person.id} and m.tenant_id = ${ctx.tenantId} and m.deactivated_at is null and (m.profile_type = 'admin' or (m.profile_type = 'colaborador' and m.areas ? 'ped')))`,
-      isLead: sql<boolean>`exists (select 1 from lead l where l.person_id = ${person.id} and l.stage not in ('matriculado', 'perdido'))`,
+      isTeacher: sql<boolean>`exists (select 1 from teacher t where t.person_id = "person"."id" and t.deactivated_at is null)`,
+      isStudent: sql<boolean>`exists (select 1 from student s where s.person_id = "person"."id" and s.status not in ('cancelado', 'inativo'))`,
+      isStaff: sql<boolean>`exists (select 1 from membership m where m.person_id = "person"."id" and m.tenant_id = ${ctx.tenantId} and m.profile_type in ('admin', 'colaborador') and m.deactivated_at is null)`,
+      isPedagogical: sql<boolean>`exists (select 1 from membership m where m.person_id = "person"."id" and m.tenant_id = ${ctx.tenantId} and m.deactivated_at is null and (m.profile_type = 'admin' or (m.profile_type = 'colaborador' and m.areas ? 'ped')))`,
+      isLead: sql<boolean>`exists (select 1 from lead l where l.person_id = "person"."id" and l.stage not in ('matriculado', 'perdido'))`,
     })
     .from(person)
     .where(eq(person.tenantId, ctx.tenantId))

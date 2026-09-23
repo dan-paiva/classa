@@ -143,14 +143,17 @@ describe("entrada do aluno", () => {
 
   it("o CPF reconcilia: ex-aluno que volta como lead não vira pessoa nova", async () => {
     const velho = cpf("987654320");
-    const { student } = await body<{ student: { personId: string } }>(await admin.json("/students", "POST", { person: { name: "Ex Aluno", cpf: velho } }));
-    const { lead } = await body<{ lead: { id: string } }>(await com("/leads", "POST", { name: "Ex Aluno de Volta", origin: "Indicação", courseId }));
+    const { student } = await body<{ student: { id: string; personId: string } }>(await admin.json("/students", "POST", { person: { name: "Ex Aluno", cpf: velho } }));
+    // o lead chega com e-mail: a ficha dele nasce com esse e-mail, que vai junto para a do CPF
+    const { lead } = await body<{ lead: { id: string } }>(await com("/leads", "POST", { name: "Ex Aluno de Volta", email: "volta@exemplo.dev", origin: "Indicação", courseId }));
     const { card } = await body<{ card: Card }>(
       await com("/flows/entrada/cards", "POST", { data: { leadId: lead.id, cpf: velho, email: "volta@exemplo.dev", availability: "sáb", packageLessons: 10 } }),
     );
     expect(card.data.personId).toBe(student.personId);
     const leads = await body<{ leads: { id: string; personId: string }[] }>(await admin.json("/leads"));
     expect(leads.leads.find((l) => l.id === lead.id)!.personId).toBe(student.personId);
+    const ficha = await body<{ student: { person: { email: string | null } } }>(await admin.json(`/students/${student.id}`));
+    expect(ficha.student.person.email).toBe("volta@exemplo.dev");
   });
 
   it("não compareceu volta para 'a marcar'; na terceira falta o lead é perdido", async () => {

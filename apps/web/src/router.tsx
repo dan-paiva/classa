@@ -10,6 +10,7 @@ import { CourseDetail } from "./pages/CourseDetail.tsx";
 import { Courses } from "./pages/Courses.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
 import { Finance } from "./pages/Finance.tsx";
+import { EventDetail, EventNew } from "./pages/Events.tsx";
 import { Flows } from "./pages/Flows.tsx";
 import { Invitation } from "./pages/Invitation.tsx";
 import { Leads } from "./pages/Leads.tsx";
@@ -40,6 +41,8 @@ const schoolRoute = createRoute({ getParentRoute: () => rootRoute, path: "/e/$sl
 
 const dashboardRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/", component: Dashboard });
 const agendaRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/agenda", component: Agenda });
+const eventNewRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/eventos/novo", component: EventNew });
+const eventRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/eventos/$eventId", component: EventDetail });
 const lessonRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/aulas/$lessonId", component: LessonDetail });
 const classGroupsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/turmas", component: ClassGroups });
 const classGroupRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/turmas/$classGroupId", component: ClassGroupDetail });
@@ -69,6 +72,8 @@ const routeTree = rootRoute.addChildren([
   schoolRoute.addChildren([
     dashboardRoute,
     agendaRoute,
+    eventNewRoute,
+    eventRoute,
     lessonRoute,
     classGroupsRoute,
     classGroupRoute,

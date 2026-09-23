@@ -1,4 +1,5 @@
 import { AGENDA_EVENT_KINDS } from "@classa/db";
+import { parseSchoolInstant } from "@classa/domain";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
@@ -22,7 +23,8 @@ import {
 import { contextFrom } from "../../services/context.ts";
 import { markUnfinishedLessons } from "../../services/lessons.ts";
 
-const instant = z.string({ error: "Informe data e hora" }).refine((s) => !Number.isNaN(new Date(s).getTime()), "Data e hora inválidas").transform((s) => new Date(s));
+// sem fuso, é hora da escola; convertido no handler, que conhece o fuso
+const instant = z.string({ error: "Informe data e hora" }).refine((s) => !!parseSchoolInstant(s, "UTC"), "Data e hora inválidas");
 
 const eventInput = z.object({
   kind: z.enum(AGENDA_EVENT_KINDS, { error: "Escolha o tipo" }),
@@ -36,6 +38,12 @@ const eventInput = z.object({
   evaluatorPersonId: uuid.nullish(),
   courseId: uuid.nullish(),
   force: z.boolean().optional(),
+});
+
+const withInstants = <T extends { startsAt: string; endsAt: string }>(tz: string, d: T) => ({
+  ...d,
+  startsAt: parseSchoolInstant(d.startsAt, tz)!,
+  endsAt: parseSchoolInstant(d.endsAt, tz)!,
 });
 
 const forbidden = () => new DomainError(403, "forbidden", "Seu perfil não permite esta ação.");
@@ -108,7 +116,8 @@ export const agendaRoutes = new Hono<AppEnv>()
     if (!hasPermission(c, "eventos", "operar")) throw forbidden();
     const { data, error } = await parseBody(c, eventInput);
     if (error) return error;
-    return c.json({ event: await createEvent(contextFrom(c), data) }, 201);
+    const ctx = contextFrom(c);
+    return c.json({ event: await createEvent(ctx, withInstants(ctx.timezone, data)) }, 201);
   })
 
   .get("/events/:id", async (c) => {
@@ -129,7 +138,8 @@ export const agendaRoutes = new Hono<AppEnv>()
     await authorOr(c, c.req.param("id"), "editar");
     const { data, error } = await parseBody(c, eventInput);
     if (error) return error;
-    return c.json({ event: await updateEvent(contextFrom(c), c.req.param("id"), data) });
+    const ctx = contextFrom(c);
+    return c.json({ event: await updateEvent(ctx, c.req.param("id"), withInstants(ctx.timezone, data)) });
   })
 
   .post("/events/:id/cancel", async (c) => {

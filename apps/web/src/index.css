@@ -201,6 +201,9 @@ tr.row-group td { border-top: 2px solid var(--line); }
 .card-lesson { display: grid; gap: 3px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid; border-radius: 8px; padding: 8px 10px; text-decoration: none; color: var(--ink); font-size: 14px; }
 .card-lesson:hover { border-color: var(--accent); }
 .card-lesson.state-cancelada { opacity: 0.55; text-decoration: line-through; }
+/* reunião, evento e nivelamento na agenda geral: tracejado para não confundir com aula */
+.card-lesson.card-event { border-left-style: dashed; background: var(--ground); }
+.struck { text-decoration: line-through; opacity: 0.6; }
 .card-time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
 
 .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
@@ -247,6 +250,9 @@ select.select-auto { width: auto; }
 .kcard { display: grid; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 14px; text-align: left; }
 .kcard-warn { border-color: var(--warn); }
 .kcard-button { font: inherit; color: var(--ink); cursor: pointer; }
+/* card que passou pela área e agora está com outra: fica visível, mais apagado */
+.kcard-watching { opacity: 0.7; border-style: dashed; }
+.area-tag { color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; }
 .kcard-button:hover, .kcard-button.on { border-color: var(--accent); }
 .kcard-actions { display: flex; gap: 12px; }
 .tab-count { display: inline-block; margin-left: 6px; font-size: 11px; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 0 6px; }

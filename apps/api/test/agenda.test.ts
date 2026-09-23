@@ -145,4 +145,18 @@ describe("agenda geral", () => {
     const res = await as(teacherCookie, "/events", "POST", { kind: "reuniao", title: "X", startsAt: at(lessonAt.startsAt, 400), endsAt: at(lessonAt.startsAt, 430) });
     expect(res.status).toBe(403);
   });
+
+  it("pessoas para escolher trazem o papel de cada uma e quem pode avaliar", async () => {
+    const { people } = await body<{ people: { name: string; roles: string[]; canEvaluate: boolean }[] }>(await admin.json("/agenda/people"));
+    expect(people.find((p) => p.name === "Prof Agenda")).toMatchObject({ roles: ["professor"], canEvaluate: true });
+    expect(people.find((p) => p.name === "Lead Nivelado")).toMatchObject({ roles: ["lead"], canEvaluate: false });
+    expect(people.find((p) => p.name === "Aluno Qualquer")).toMatchObject({ roles: ["aluno"], canEvaluate: false });
+  });
+
+  it("data e hora sem fuso, como vem do formulário, é hora da escola", async () => {
+    const { event } = await body<{ event: { startsAt: string } }>(
+      await admin.json("/events", "POST", { kind: "evento", title: "Sarau", startsAt: "2030-03-12T19:00", endsAt: "2030-03-12T21:00" }),
+    );
+    expect(new Date(event.startsAt).toISOString()).toBe("2030-03-12T22:00:00.000Z");
+  });
 });
