@@ -24,6 +24,7 @@ import {
   updateTeacher,
 } from "../../services/people.ts";
 import { listClassGroups, listLessons } from "../../services/schedule.ts";
+import { primaryEmailSql } from "../../services/people.ts";
 
 const personInput = z.object({
   name: z.string({ error: "Informe o nome" }),
@@ -101,6 +102,7 @@ export const peopleRoutes = new Hono<AppEnv>()
       .select({
         student,
         person,
+        email: primaryEmailSql,
         companyName: sql<string | null>`(select c.name from company c where c.id = ${student.companyId})`,
         activeEnrollments: sql<number>`(select count(*)::int from enrollment e where e.student_id = ${student.id} and e.ended_at is null)`,
         balance: sql<number>`(select coalesce(sum(ce.amount), 0)::int from credit_entry ce join enrollment e on e.id = ce.enrollment_id where e.student_id = ${student.id} and e.ended_at is null)`,
@@ -114,12 +116,15 @@ export const peopleRoutes = new Hono<AppEnv>()
         and(
           eq(student.tenantId, ctx.tenantId),
           status && (STUDENT_STATUSES as readonly string[]).includes(status) ? eq(student.status, status as (typeof STUDENT_STATUSES)[number]) : undefined,
-          q ? sql`(${person.name} ilike ${`%${q}%`} or ${person.email} ilike ${`%${q}%`} or ${person.cpf} like ${`%${q.replace(/\D/g, "") || "-"}%`})` : undefined,
+          q
+            ? sql`(${person.name} ilike ${`%${q}%`} or ${person.cpf} like ${`%${q.replace(/\D/g, "") || "-"}%`}
+                or exists (select 1 from person_email pe where pe.person_id = "person"."id" and pe.email ilike ${`%${q}%`}))`
+            : undefined,
         ),
       )
       .orderBy(person.name);
     return c.json({
-      students: rows.map((r) => ({ ...r.student, person: r.person, companyName: r.companyName, activeEnrollments: r.activeEnrollments, balance: r.balance, overdueInstallments: r.overdue })),
+      students: rows.map((r) => ({ ...r.student, person: { ...r.person, email: r.email }, companyName: r.companyName, activeEnrollments: r.activeEnrollments, balance: r.balance, overdueInstallments: r.overdue })),
     });
   })
 
@@ -128,7 +133,9 @@ export const peopleRoutes = new Hono<AppEnv>()
     const id = uuid.safeParse(c.req.param("id"));
     if (!id.success) throw invalid("id", "Aluno não encontrado");
     const s = await getStudentRow(ctx.db, ctx, id.data);
-    const [p] = await ctx.db.select().from(person).where(eq(person.id, s.personId));
+    // o e-mail mora em person_email desde o item 11: sem isto a ficha saía sem e-mail
+    const [row] = await ctx.db.select({ person, email: primaryEmailSql }).from(person).where(eq(person.id, s.personId));
+    const p = row ? { ...row.person, email: row.email } : undefined;
     const [co] = s.companyId ? await ctx.db.select({ id: company.id, name: company.name, model: company.model }).from(company).where(eq(company.id, s.companyId)) : [];
     const enrollments = await listEnrollments(ctx, { studentId: s.id });
     const installments = await listInstallments(ctx, { studentId: s.id });

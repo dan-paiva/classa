@@ -22,6 +22,8 @@ const rulesInput = z.object({
   cancelNoticeHours: number().int("Use horas inteiras").min(0, "Antecedência não pode ser negativa").max(720, "No máximo 720 horas"),
   lessonPriceCents: number().int("Valor inválido").min(0, "Valor não pode ser negativo").max(100_000_00, "Valor alto demais"),
   modalities: z.array(z.enum(MODALITIES)).min(1, "Escolha ao menos uma modalidade").transform((m) => [...new Set(m)]),
+  /** Quem reserva a vaga open-entry: o aluno ou só a secretaria (DOMINIO.md §5.9). */
+  autoAgenda: z.boolean(),
 });
 
 const name = z.string({ error: "Informe o nome" }).trim().min(2, "Nome precisa de pelo menos 2 caracteres").max(120, "No máximo 120 caracteres");

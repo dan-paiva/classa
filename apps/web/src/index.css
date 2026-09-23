@@ -152,6 +152,10 @@ th { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: upp
 table.compact th, table.compact td { padding: 8px 10px; white-space: normal; }
 table.compact td .actions { justify-content: flex-end; gap: 12px; }
 tr.is-off td { color: var(--muted); }
+/* separa visualmente os dias numa lista longa de horários, sem repetir cabeçalho */
+tr.row-group td { border-top: 2px solid var(--line); }
+/* em largura cheia, os horários abertos cabem em colunas */
+.slot-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0 16px; }
 
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; align-content: start; }

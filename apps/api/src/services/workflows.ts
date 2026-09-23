@@ -17,6 +17,7 @@ import {
   workflowCard,
   workflowTransition,
   type PaymentMethod,
+  courseModule,
 } from "@classa/db";
 import {
   addDays,
@@ -35,7 +36,7 @@ import { invalid, notFound, unprocessable } from "../http/errors.ts";
 import type { ServiceContext } from "./context.ts";
 import { issueContractTx, listInstallments, registerPayment } from "./finance.ts";
 import { changeLessonTeacher } from "./lessons.ts";
-import { createStudent, createTeacher, setStudentStatus } from "./people.ts";
+import { createStudent, createTeacher, findOrCreatePerson, primaryEmailSql, setStudentStatus, updatePerson } from "./people.ts";
 import { transferEnrollment } from "./enrollments.ts";
 
 const today = (ctx: ServiceContext) => dateInZone(ctx.now, ctx.timezone);
@@ -60,11 +61,13 @@ async function studentName(ctx: ServiceContext, studentId: string) {
 
 async function enrollmentLabel(ctx: ServiceContext, enrollmentId: string) {
   const [row] = await ctx.db
-    .select({ studentName: person.name, className: classGroup.name, endedAt: enrollment.endedAt })
+    .select({ studentName: person.name, className: sql<string | null>`coalesce(${classGroup.name}, ${courseModule.name})`, endedAt: enrollment.endedAt })
     .from(enrollment)
     .innerJoin(student, eq(student.id, enrollment.studentId))
     .innerJoin(person, eq(person.id, student.personId))
-    .innerJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
+    // left: matrícula open-entry não tem turma (DOMINIO.md §5.9)
+    .leftJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
+    .leftJoin(courseModule, eq(courseModule.id, enrollment.moduleId))
     .where(and(eq(enrollment.id, enrollmentId), eq(enrollment.tenantId, ctx.tenantId)));
   if (!row) throw invalid("enrollmentId", "Matrícula não encontrada");
   return row;
@@ -344,7 +347,8 @@ export async function renewalQueue(ctx: ServiceContext) {
     .from(enrollment)
     .innerJoin(student, eq(student.id, enrollment.studentId))
     .innerJoin(person, eq(person.id, student.personId))
-    .innerJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
+    // left: matrícula open-entry não tem turma (DOMINIO.md §5.9)
+    .leftJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
     .innerJoin(course, eq(course.id, enrollment.courseId))
     .where(and(eq(enrollment.tenantId, ctx.tenantId), isNull(enrollment.endedAt), sql`${enrollment.endsOn} <= ${limit}`))
     .orderBy(asc(enrollment.endsOn));
@@ -359,6 +363,7 @@ export type LeadInput = {
   name: string;
   email?: string | null;
   phone?: string | null;
+  cpf?: string | null;
   origin: string;
   campaign?: string | null;
   courseId?: string | null;
@@ -368,24 +373,30 @@ export type LeadInput = {
   consent?: boolean;
 };
 
+/** O lead não guarda mais nome, e-mail nem telefone: isso é da pessoa (DOMINIO.md §6.5). */
 async function getLead(ctx: ServiceContext, id: string) {
-  const [row] = await ctx.db.select().from(lead).where(and(eq(lead.id, id), eq(lead.tenantId, ctx.tenantId)));
+  const [row] = await ctx.db
+    .select({ lead, name: person.name, cpf: person.cpf, phone: person.phone, email: primaryEmailSql })
+    .from(lead)
+    .innerJoin(person, eq(person.id, lead.personId))
+    .where(and(eq(lead.id, id), eq(lead.tenantId, ctx.tenantId)));
   if (!row) throw notFound("Lead");
-  return row;
+  return { ...row.lead, name: row.name, cpf: row.cpf, phone: row.phone, email: row.email };
 }
 
+/** Captar cria a pessoa na hora: é daqui que sai o id que acompanha até depois de virar aluno. */
 export async function createLead(ctx: ServiceContext, input: LeadInput) {
-  const name = input.name.trim();
-  if (name.length < 2) throw invalid("name", "Nome precisa de pelo menos 2 caracteres");
-  const email = input.email?.trim().toLowerCase() || null;
-  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw invalid("email", "E-mail inválido");
+  const p = await findOrCreatePerson(ctx.db, ctx, {
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+    cpf: input.cpf,
+  });
   const [row] = await ctx.db
     .insert(lead)
     .values({
       tenantId: ctx.tenantId,
-      name,
-      email,
-      phone: input.phone?.replace(/\D/g, "") || null,
+      personId: p.id,
       origin: input.origin,
       campaign: input.campaign || null,
       courseId: input.courseId || null,
@@ -397,18 +408,25 @@ export async function createLead(ctx: ServiceContext, input: LeadInput) {
       stageChangedAt: ctx.now,
     })
     .returning();
-  await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "lead", entityId: row!.id, action: "create", after: row });
-  return row!;
+  const created = { ...row!, name: p.name, cpf: p.cpf, phone: p.phone, email: p.email };
+  await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "lead", entityId: row!.id, action: "create", after: created });
+  return created;
 }
 
 export async function updateLead(ctx: ServiceContext, id: string, input: Partial<LeadInput>) {
   const before = await getLead(ctx, id);
+  // nome, e-mail, telefone e CPF são da pessoa; o resto é do lead
+  if (input.name !== undefined || input.email !== undefined || input.phone !== undefined || input.cpf !== undefined) {
+    await updatePerson(ctx, before.personId, {
+      name: input.name ?? before.name,
+      email: input.email !== undefined ? input.email : before.email,
+      phone: input.phone !== undefined ? input.phone : before.phone,
+      cpf: input.cpf !== undefined ? input.cpf : before.cpf,
+    });
+  }
   const [row] = await ctx.db
     .update(lead)
     .set({
-      ...(input.name !== undefined ? { name: input.name.trim() } : {}),
-      ...(input.email !== undefined ? { email: input.email?.trim().toLowerCase() || null } : {}),
-      ...(input.phone !== undefined ? { phone: input.phone?.replace(/\D/g, "") || null } : {}),
       ...(input.courseId !== undefined ? { courseId: input.courseId || null } : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
       ...(input.nextAction !== undefined ? { nextAction: input.nextAction || null } : {}),
@@ -416,8 +434,9 @@ export async function updateLead(ctx: ServiceContext, id: string, input: Partial
     })
     .where(eq(lead.id, id))
     .returning();
-  await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "lead", entityId: id, action: "update", before, after: row });
-  return row!;
+  const after = await getLead(ctx, id);
+  await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "lead", entityId: id, action: "update", before, after });
+  return after;
 }
 
 /** Avança uma etapa (até proposta), marca como perdido (com motivo) ou reabre. */
@@ -441,21 +460,18 @@ export async function moveLead(ctx: ServiceContext, id: string, action: { to: "a
   return row!;
 }
 
-/** Converte o lead (a partir da proposta) em aluno, reaproveitando a pessoa se o e-mail já existe. */
+/**
+ * Converte o lead (a partir da proposta) em aluno. A pessoa já existe desde a
+ * captação: aqui só se acrescenta o papel de aluno a ela (DOMINIO.md §6.5).
+ */
 export async function convertLead(ctx: ServiceContext, id: string) {
   const l = await getLead(ctx, id);
   if (l.stage !== "proposta") throw unprocessable("Só lead com proposta enviada pode ser matriculado.");
-  let studentId: string | null = null;
-  if (l.email) {
-    const [existing] = await ctx.db
-      .select({ personId: person.id, studentId: student.id })
-      .from(person)
-      .leftJoin(student, eq(student.personId, person.id))
-      .where(and(eq(person.tenantId, ctx.tenantId), sql`lower(${person.email}) = ${l.email}`));
-    if (existing?.studentId) studentId = existing.studentId;
-    else if (existing) studentId = (await createStudent(ctx, { personId: existing.personId })).id;
-  }
-  if (!studentId) studentId = (await createStudent(ctx, { person: { name: l.name, email: l.email, phone: l.phone } })).id;
+  const [existing] = await ctx.db
+    .select({ id: student.id })
+    .from(student)
+    .where(and(eq(student.tenantId, ctx.tenantId), eq(student.personId, l.personId)));
+  const studentId = existing?.id ?? (await createStudent(ctx, { personId: l.personId })).id;
   const [row] = await ctx.db.update(lead).set({ stage: "matriculado", studentId, stageChangedAt: ctx.now }).where(eq(lead.id, id)).returning();
   await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "lead", entityId: id, action: "transition", before: l, after: row });
   return row!;
@@ -463,13 +479,18 @@ export async function convertLead(ctx: ServiceContext, id: string) {
 
 export async function listLeads(ctx: ServiceContext) {
   const rows = await ctx.db
-    .select({ lead, courseName: course.name })
+    .select({ lead, courseName: course.name, name: person.name, cpf: person.cpf, phone: person.phone, email: primaryEmailSql })
     .from(lead)
+    .innerJoin(person, eq(person.id, lead.personId))
     .leftJoin(course, eq(course.id, lead.courseId))
     .where(eq(lead.tenantId, ctx.tenantId))
     .orderBy(desc(lead.stageChangedAt));
   return rows.map((r) => ({
     ...r.lead,
+    name: r.name,
+    cpf: r.cpf,
+    phone: r.phone,
+    email: r.email,
     courseName: r.courseName,
     daysInStage: Math.floor((ctx.now.getTime() - r.lead.stageChangedAt.getTime()) / 86400_000),
     stalled: r.lead.stage === "proposta" && ctx.now.getTime() - r.lead.stageChangedAt.getTime() >= 14 * 86400_000,
@@ -503,7 +524,8 @@ export async function flowOptions(ctx: ServiceContext, flowKey: string) {
           .from(enrollment)
           .innerJoin(student, eq(student.id, enrollment.studentId))
           .innerJoin(person, eq(person.id, student.personId))
-          .innerJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
+          // left: matrícula open-entry não tem turma (DOMINIO.md §5.9)
+          .leftJoin(classGroup, eq(classGroup.id, enrollment.classGroupId))
           .where(and(eq(enrollment.tenantId, ctx.tenantId), isNull(enrollment.endedAt)))
           .orderBy(asc(person.name)),
       };

@@ -28,6 +28,7 @@ const leadInput = z.object({
   name: z.string({ error: "Informe o nome" }),
   email: z.string().nullish(),
   phone: z.string().nullish(),
+  cpf: z.string().nullish(),
   origin: z.string({ error: "Escolha a origem" }),
   campaign: z.string().nullish(),
   courseId: uuid.nullish(),

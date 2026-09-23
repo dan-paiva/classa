@@ -49,6 +49,21 @@ export function FormError({ error }: { error: unknown }) {
   );
 }
 
+/**
+ * 409 de pessoa repetida. O erro de campo diz só "já cadastrado"; aqui mostramos
+ * de quem é, porque o caminho certo é usar a ficha que já existe — a mesma
+ * pessoa pode ser aluno e colaborador (DOMINIO.md §3.1.2).
+ */
+export function PersonExists({ error }: { error: unknown }) {
+  const e = error as { status?: number; message?: string; issues?: Record<string, string[]> } | null;
+  if (!e || e.status !== 409 || !e.issues?.existingPersonId?.[0]) return null;
+  return (
+    <p className="error" role="alert">
+      {e.message} Procure por ela na lista pelo CPF ou e-mail e use a ficha que já existe, em vez de criar outra.
+    </p>
+  );
+}
+
 export type Tone = "neutral" | "ok" | "warn" | "danger" | "info" | "muted";
 
 export function Badge({ tone = "neutral", children }: { tone?: Tone; children: ReactNode }) {

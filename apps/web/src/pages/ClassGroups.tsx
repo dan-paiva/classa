@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { api, allowsModules, issuesOf, type Modality } from "../api.ts";
-import { school, type Schedule } from "../api-school.ts";
+import { school, REGIME_HINTS, REGIME_LABELS, type ClassRegime, type Schedule } from "../api-school.ts";
 import { addDaysIso, fmtIsoDate, scheduleLabel, todayIso, WEEKDAYS } from "../lib/format.ts";
 import { Badge, ColorDot, Empty, Field, FormError, LoadError, Loading, PageHead } from "../ui.tsx";
 
@@ -11,16 +11,19 @@ export function ClassGroups() {
   const [creating, setCreating] = useState(false);
   const [courseId, setCourseId] = useState("");
   const [showIndividual, setShowIndividual] = useState(false);
+  const [regime, setRegime] = useState<"" | ClassRegime>("");
   const groups = useQuery({ queryKey: ["class-groups", slug], queryFn: () => school.classGroups(slug) });
   const courses = useQuery({ queryKey: ["courses", slug], queryFn: () => api.courses(slug) });
 
-  const list = (groups.data?.classGroups ?? []).filter((g) => (!courseId || g.courseId === courseId) && (showIndividual || !g.individual));
+  const list = (groups.data?.classGroups ?? []).filter(
+    (g) => (!courseId || g.courseId === courseId) && (showIndividual || !g.individual) && (!regime || g.regime === regime),
+  );
 
   return (
     <div className="stack-lg">
       <PageHead
         title="Turmas"
-        subtitle="O que se repete toda semana e gera as aulas. Aula particular é uma turma de 1 vaga."
+        subtitle="O que se repete toda semana e gera as aulas. Na turma regular o aluno pertence a ela; na open-entry as vagas ficam abertas."
         actions={
           !creating && (
             <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>
@@ -39,6 +42,11 @@ export function ClassGroups() {
               {c.name}
             </option>
           ))}
+        </select>
+        <select aria-label="Regime" value={regime} onChange={(e) => setRegime(e.target.value as "" | ClassRegime)}>
+          <option value="">Todos os regimes</option>
+          <option value="regular">Só turmas regulares</option>
+          <option value="open_entry">Só open-entry</option>
         </select>
         <label className="check" htmlFor="show-individual">
           <input id="show-individual" type="checkbox" checked={showIndividual} onChange={(e) => setShowIndividual(e.target.checked)} />
@@ -75,6 +83,11 @@ export function ClassGroups() {
                       <Link to="/e/$slug/turmas/$classGroupId" params={{ slug, classGroupId: g.id }} className="row-link">
                         {g.name}
                       </Link>
+                      {g.regime === "open_entry" && (
+                        <div>
+                          <Badge tone="info">Open-entry</Badge>
+                        </div>
+                      )}
                     </td>
                     <td>
                       <span className="title-with-dot">
@@ -87,7 +100,15 @@ export function ClassGroups() {
                     <td>{g.teacherName ?? <Badge tone="danger">Sem professor</Badge>}</td>
                     <td>{g.roomName ?? "—"}</td>
                     <td className="num">
-                      {g.enrolled}/{g.capacity} {full && <Badge tone="warn">Cheia</Badge>}
+                      {g.regime === "open_entry" ? (
+                        <span className="muted small" title="No open-entry a vaga é por aula, não por matrícula">
+                          {g.capacity} por aula
+                        </span>
+                      ) : (
+                        <>
+                          {g.enrolled}/{g.capacity} {full && <Badge tone="warn">Cheia</Badge>}
+                        </>
+                      )}
                     </td>
                     <td className="small">
                       {fmtIsoDate(g.startsOn)} a {fmtIsoDate(g.endsOn)}
@@ -116,6 +137,7 @@ function NewClassGroup({ slug, onClose }: { slug: string; onClose: () => void })
   const [teacherId, setTeacherId] = useState("");
   const [roomId, setRoomId] = useState("");
   const [modality, setModality] = useState<Modality>("online");
+  const [regime, setRegime] = useState<ClassRegime>("regular");
   const [capacity, setCapacity] = useState("");
   const [startsOn, setStartsOn] = useState(todayIso());
   const [endsOn, setEndsOn] = useState(addDaysIso(todayIso(), 180));
@@ -145,6 +167,7 @@ function NewClassGroup({ slug, onClose }: { slug: string; onClose: () => void })
         teacherId: teacherId || null,
         roomId: roomId || null,
         modality,
+        regime,
         capacity: capacity ? Number(capacity) : undefined,
         startsOn,
         endsOn,
@@ -192,7 +215,25 @@ function NewClassGroup({ slug, onClose }: { slug: string; onClose: () => void })
           </select>
         </Field>
         {course && allowsModules(course.type) && (
-          <Field label={course.type === "turmas_dedicadas" ? "Turma do contrato" : "Módulo"} htmlFor="cg-module" errors={issues.moduleId}>
+          <Field
+            label="Regime"
+            htmlFor="cg-regime"
+            errors={issues.regime}
+            hint={REGIME_HINTS[regime]}
+          >
+            <select id="cg-regime" value={regime} onChange={(e) => setRegime(e.target.value as ClassRegime)}>
+              <option value="regular">{REGIME_LABELS.regular}</option>
+              <option value="open_entry">{REGIME_LABELS.open_entry}</option>
+            </select>
+          </Field>
+        )}
+        {course && allowsModules(course.type) && (
+          <Field
+            label={course.type === "turmas_dedicadas" ? "Turma do contrato" : "Módulo"}
+            htmlFor="cg-module"
+            errors={issues.moduleId}
+            hint={regime === "open_entry" ? "No open-entry, é o nível: só aluno desse nível reserva aqui." : undefined}
+          >
             <select id="cg-module" required value={moduleId} onChange={(e) => setModuleId(e.target.value)}>
               <option value="">Escolha…</option>
               {course.modules
@@ -241,7 +282,12 @@ function NewClassGroup({ slug, onClose }: { slug: string; onClose: () => void })
           </select>
         </Field>
         {course?.type !== "particular" && (
-          <Field label="Vagas" htmlFor="cg-capacity" errors={issues.capacity} hint={course ? `Padrão do curso: ${course.capacity}` : undefined}>
+          <Field
+            label="Vagas"
+            htmlFor="cg-capacity"
+            errors={issues.capacity}
+            hint={regime === "open_entry" ? "Por aula, não por matrícula: é quanta gente cabe em cada horário." : course ? `Padrão do curso: ${course.capacity}` : undefined}
+          >
             <input id="cg-capacity" inputMode="numeric" value={capacity} onChange={(e) => setCapacity(e.target.value)} />
           </Field>
         )}

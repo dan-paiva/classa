@@ -29,12 +29,14 @@ import { createAuth } from "../src/auth.ts";
 import { createCompany, generateCharge, linkStudent, payCharge } from "../src/services/companies.ts";
 import type { ServiceContext } from "../src/services/context.ts";
 import { createEnrollment, listEnrollments } from "../src/services/enrollments.ts";
+import { listOpenSlots, reserveLesson } from "../src/services/open-entry.ts";
 import { listInstallments, refreshDelinquency, registerPayment, reversePayment } from "../src/services/finance.ts";
 import { cancelLesson, cancelStudentLesson, changeLessonTeacher, concludeLesson, markUnfinishedLessons, setAttendance } from "../src/services/lessons.ts";
 import { createRoom, createStudent, createTeacher, setStudentStatus } from "../src/services/people.ts";
 import { closeMonth, markLinePaid, overrideLessonRate, requestSupport, setClassGroupTeacherRate, computePayroll } from "../src/services/payroll.ts";
 import { createClassGroup, generateLessons, importNationalHolidays } from "../src/services/schedule.ts";
 import { convertLead, createCard, createLead, flowOptions, moveCard, moveLead, updateCard } from "../src/services/workflows.ts";
+import { setPersonEmail } from "../src/services/people.ts";
 
 const SLUG = "demo";
 const TZ = "America/Sao_Paulo";
@@ -89,7 +91,7 @@ async function resetDemo(db: Database) {
   // ordem inversa das dependências
   for (const table of [
     "membership", "invitation", "workflow_transition", "workflow_card", "lead", "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
-    "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "person",
+    "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "person_email", "person",
     "room", "course_module", "course", "audit_log",
   ]) {
     await db.execute(sql.raw(`delete from ${table} where tenant_id = '${id}'`));
@@ -245,7 +247,37 @@ async function main() {
       roomId: rooms.v3.id, modality: "online", startsOn: addDays(today, 14), endsOn: end, schedules: [{ weekday: 6, startTime: "10:00" }],
     });
     groups.push(nova.classGroup);
-    log(`${groups.length} turmas em grupo`);
+
+    // ofertas open-entry: horários publicados, ninguém matriculado na turma.
+    // Dois níveis e dois professores no mesmo horário, para dar o que escolher.
+    // professor, dia e sala escolhidos para caber na habilitação, na
+    // disponibilidade e na agenda que cada um já tem acima
+    const openSpecs = [
+      { module: 0, name: "Open Básico · Sex 19h", teacher: 0, room: "v1", schedules: [[5, "19:00"]] },
+      { module: 0, name: "Open Básico · Ter 19h", teacher: 4, room: "v3", schedules: [[2, "19:00"]] },
+      { module: 0, name: "Open Básico · Sáb 10h", teacher: 5, room: "s101", schedules: [[6, "10:00"]] },
+      { module: 2, name: "Open Intermediário · Qui 19h", teacher: 8, room: "v2", schedules: [[4, "19:00"]] },
+      { module: 2, name: "Open Intermediário · Sex 20h", teacher: 0, room: "v2", schedules: [[5, "20:00"]] },
+    ] as const;
+    const openGroups: typeof groups = [];
+    for (const g of openSpecs) {
+      const { classGroup } = await createClassGroup(nowCtx, {
+        courseId: ingles.id,
+        moduleId: ingles.modules[g.module]!.id,
+        name: g.name,
+        teacherId: teachers[g.teacher]!.id,
+        roomId: rooms[g.room].id,
+        modality: g.room.startsWith("v") ? "online" : "presencial",
+        regime: "open_entry",
+        capacity: 6,
+        startsOn: start,
+        endsOn: end,
+        schedules: g.schedules.map(([weekday, startTime]) => ({ weekday, startTime })),
+      });
+      openGroups.push(classGroup);
+      groups.push(classGroup);
+    }
+    log(`${groups.length} turmas em grupo (${openGroups.length} delas open-entry, com vagas abertas)`);
 
     /* ------------------------------------------------------------------- alunos */
     const students: { id: string; name: string }[] = [];
@@ -341,9 +373,47 @@ async function main() {
     }
     log(`${enrollments} matrículas com contrato e parcelas (turmas corporativas e alunos B2B sem cobrança individual)`);
 
+    /* ------------------------------------------------------- open-entry (§5.9) */
+    // Alunos sem turma fixa: cada um no seu nível, reservando as aulas que consegue.
+    let openStudents = 0;
+    let reservas = 0;
+    let primeiroOpen: { id: string; name: string } | null = null;
+    for (const [i, moduleIdx] of [0, 0, 0, 2, 2].entries()) {
+      const name = fullName();
+      const st = await createStudent(nowCtx, {
+        person: { name, email: emailOf(name), cpf: nextCpf(), phone: phone() },
+        availability: range([1, 2, 3, 4, 6], [10, 19]),
+      });
+      students.push({ id: st.id, name });
+      primeiroOpen ??= { id: st.id, name };
+      const startsOn = addDays(today, -30 + i * 3);
+      const e = await createEnrollment(at(base, localMidnight(startsOn)), {
+        studentId: st.id,
+        regime: "open_entry",
+        courseId: ingles.id,
+        moduleId: ingles.modules[moduleIdx]!.id,
+        packageLessons: 24,
+        startsOn,
+        contract: { installments: 4 },
+      });
+      openStudents++;
+
+      // ele pega algumas das vagas abertas do nível dele, em ofertas diferentes
+      const slots = await listOpenSlots(nowCtx, e.id);
+      for (const slot of slots.filter((x) => !x.full).slice(0, 3 + (i % 3))) {
+        try {
+          await reserveLesson(nowCtx, e.id, slot.id);
+          reservas++;
+        } catch {
+          // vaga tomada ou choque de horário: é o comportamento esperado, segue
+        }
+      }
+    }
+    log(`${openStudents} alunos open-entry com ${reservas} aulas reservadas (sem turma fixa, cada um no seu nível)`);
+
     // colaboradores das turmas dedicadas ficam ligados à empresa cliente
     const corporateGroups = new Set(groups.filter((g) => g.courseId === corporativo.id).map((g) => g.id));
-    const corporateStudents = (await listEnrollments(nowCtx, { activeOnly: true })).filter((e) => corporateGroups.has(e.classGroupId));
+    const corporateStudents = (await listEnrollments(nowCtx, { activeOnly: true })).filter((e) => !!e.classGroupId && corporateGroups.has(e.classGroupId));
     for (const e of corporateStudents) {
       try {
         await linkStudent(nowCtx, alfa.id, e.studentId);
@@ -520,7 +590,7 @@ async function main() {
       await createCard(nowCtx, "substituicao", { lessonId: subOptions[5]!.id, reason: "Compromisso pessoal" });
     });
     await tryFlow("mudança de nível", async () => {
-      const e = levelOptions.find((x) => x.className.startsWith("Básico 1 · Seg"));
+      const e = levelOptions.find((x) => x.className?.startsWith("Básico 1 · Seg"));
       const target = groups.find((g) => g.name.startsWith("Básico 2"));
       const card = await createCard(nowCtx, "nivel", { enrollmentId: e!.id });
       await moveCard(nowCtx, card.id, "teste");
@@ -568,18 +638,26 @@ async function main() {
     const [teacherPerson] = await db.select({ personId: teacherTable.personId }).from(teacherTable).where(eq(teacherTable.id, teachers[0]!.id));
     const privateStudent = particulares[0]!.student;
     const [studentPerson] = await db.select({ personId: studentTable.personId }).from(studentTable).where(eq(studentTable.id, privateStudent.id));
+    const [openPerson] = await db.select({ personId: studentTable.personId }).from(studentTable).where(eq(studentTable.id, primeiroOpen!.id));
     const demoProfiles = [
       { email: "coordenacao@demo.classa.dev", name: "Coordenação Demo", profileType: "colaborador" as const, level: 2, areas: { ped: "total" as const, aca: "restrito" as const }, personId: null },
       { email: "financeiro@demo.classa.dev", name: "Financeiro Demo", profileType: "colaborador" as const, level: 3, areas: { fin: "total" as const, aca: "restrito" as const }, personId: null },
       { email: "professor@demo.classa.dev", name: teachers[0]!.name, profileType: "prestador" as const, level: 4, areas: {}, personId: teacherPerson!.personId },
       { email: "aluno@demo.classa.dev", name: privateStudent.name, profileType: "aluno" as const, level: 5, areas: {}, personId: studentPerson!.personId },
+      // aluno sem turma fixa: é ele que marca a própria aula na área do aluno
+      { email: "aluno.open@demo.classa.dev", name: primeiroOpen!.name, profileType: "aluno" as const, level: 5, areas: {}, personId: openPerson!.personId },
     ];
     for (const prof of demoProfiles) {
       const u = await account(prof.email, prof.name);
       await db.insert(membership).values({ tenantId: school!.id, userId: u.id, role: "admin", profileType: prof.profileType, level: prof.level, areas: prof.areas, personId: prof.personId });
+      // mesmo caminho do aceite de convite: o e-mail do login passa a ser da pessoa.
+      // O professor fica com os dois (o pessoal do cadastro e o corporativo daqui).
+      if (prof.personId) {
+        await setPersonEmail(db, { tenantId: school!.id }, prof.personId, prof.email, prof.profileType === "aluno" ? "pessoal" : "corporativo");
+      }
     }
     void personTable;
-    log("contas de demonstração: coordenacao@, financeiro@, professor@ e aluno@demo.classa.dev (senha classa-demo-123)");
+    log("contas de demonstração: coordenacao@, financeiro@, professor@, aluno@ e aluno.open@demo.classa.dev (senha classa-demo-123)");
 
     const active = await listEnrollments(nowCtx, { activeOnly: true });
     const high = active.filter((e) => e.usage >= 0.8).length;

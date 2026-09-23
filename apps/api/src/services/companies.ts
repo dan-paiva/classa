@@ -19,6 +19,7 @@ import { audit } from "../http/audit.ts";
 import { conflict, invalid, notFound, unprocessable } from "../http/errors.ts";
 import { isUniqueViolation, pgConstraint } from "../http/pg-errors.ts";
 import type { Db, ServiceContext } from "./context.ts";
+import { primaryEmailSql } from "./people.ts";
 
 const today = (ctx: ServiceContext) => dateInZone(ctx.now, ctx.timezone);
 
@@ -281,7 +282,7 @@ export async function companyDetail(ctx: ServiceContext, id: string) {
       id: student.id,
       status: student.status,
       name: person.name,
-      email: person.email,
+      email: primaryEmailSql,
       activeEnrollments: sql<number>`(select count(*)::int from enrollment e where e.student_id = ${student.id} and e.ended_at is null)`,
       used: sql<number>`(select coalesce(-sum(ce.amount), 0)::int from credit_entry ce join enrollment e on e.id = ce.enrollment_id where e.student_id = ${student.id} and ce.amount < 0)`,
     })

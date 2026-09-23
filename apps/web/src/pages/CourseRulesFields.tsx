@@ -9,6 +9,7 @@ export type RulesDraft = {
   cancelNoticeHours: string;
   lessonPrice: string;
   modalities: Modality[];
+  autoAgenda: boolean;
 };
 
 const MODALITY_LABELS: Record<Modality, string> = { online: "Online", presencial: "Presencial" };
@@ -82,6 +83,19 @@ export function RulesFields({
         </div>
         {issues.modalities?.[0] && <small className="error">{issues.modalities[0]}</small>}
       </fieldset>
+      <fieldset className="field">
+        <legend>Quem marca a aula open-entry</legend>
+        <label className="check" htmlFor="autoAgenda">
+          <input
+            id="autoAgenda"
+            type="checkbox"
+            checked={draft.autoAgenda}
+            onChange={(e) => onChange({ ...draft, autoAgenda: e.target.checked })}
+          />
+          O próprio aluno reserva
+        </label>
+        <small>Desmarcado, só a secretaria marca. Vale só para turmas open-entry deste curso.</small>
+      </fieldset>
     </div>
   );
 }
@@ -94,6 +108,7 @@ export function draftFromRules(r: CourseRulesInput): RulesDraft {
     cancelNoticeHours: String(r.cancelNoticeHours),
     lessonPrice: (r.lessonPriceCents / 100).toFixed(2).replace(".", ","),
     modalities: r.modalities,
+    autoAgenda: r.autoAgenda ?? true,
   };
 }
 
@@ -107,5 +122,6 @@ export function rulesFromDraft(d: RulesDraft, type: CourseType, parseReais: (s: 
     cancelNoticeHours: int(d.cancelNoticeHours),
     lessonPriceCents: parseReais(d.lessonPrice) ?? Number.NaN,
     modalities: d.modalities,
+    autoAgenda: d.autoAgenda,
   };
 }

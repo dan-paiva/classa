@@ -48,13 +48,15 @@ export type Course = {
   cancelNoticeHours: number;
   lessonPriceCents: number;
   modalities: Modality[];
+  /** Quem reserva a vaga open-entry: o próprio aluno ou só a secretaria. */
+  autoAgenda: boolean;
   deactivatedAt: string | null;
   modules: CourseModule[];
 };
 
 export type CourseRulesInput = Pick<
   Course,
-  "capacity" | "lessonMinutes" | "packageLessons" | "cancelNoticeHours" | "lessonPriceCents" | "modalities"
+  "capacity" | "lessonMinutes" | "packageLessons" | "cancelNoticeHours" | "lessonPriceCents" | "modalities" | "autoAgenda"
 >;
 
 export class ApiError extends Error {

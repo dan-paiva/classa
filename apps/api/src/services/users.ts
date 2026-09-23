@@ -20,6 +20,7 @@ import { AREAS, PROFILE_TYPES, type ProfileType } from "@classa/domain";
 import { audit } from "../http/audit.ts";
 import { conflict, DomainError, invalid, notFound, unprocessable } from "../http/errors.ts";
 import type { ServiceContext } from "./context.ts";
+import { findPersonByEmail, primaryEmailSql, setPersonEmail } from "./people.ts";
 
 export type AccessInput = { profileType: ProfileType; level: number; areas: AreaAccessMap };
 
@@ -150,7 +151,11 @@ export async function createInvitation(ctx: ServiceContext, input: AccessInput &
   let email = input.email?.trim().toLowerCase() || null;
   let personId = input.personId ?? null;
   if (personId) {
-    const [p] = await ctx.db.select().from(person).where(and(eq(person.id, personId), eq(person.tenantId, ctx.tenantId)));
+    const [p] = await ctx.db
+      .select({ person, email: primaryEmailSql })
+      .from(person)
+      .where(and(eq(person.id, personId), eq(person.tenantId, ctx.tenantId)))
+      .then((r) => (r[0] ? [{ ...r[0].person, email: r[0].email }] : []));
     if (!p) throw invalid("personId", "Pessoa não encontrada");
     email = email ?? p.email;
     if (access.profileType === "prestador") {
@@ -240,6 +245,13 @@ export async function acceptInvitation(db: Database, token: string, user: { id: 
       .values({ tenantId: inv.tenantId, userId: user.id, role: "admin", ...values })
       .onConflictDoUpdate({ target: [membership.tenantId, membership.userId], set: values })
       .returning();
+    // o e-mail do login passa a ser da pessoa: é o que deixa o mesmo ser humano
+    // entrar como colaborador pelo corporativo e como aluno pelo pessoal (DOMINIO.md §3.4)
+    if (inv.personId) {
+      const kind = inv.profileType === "aluno" ? "pessoal" : "corporativo";
+      const dono = await findPersonByEmail(tx, { tenantId: inv.tenantId }, inv.email);
+      if (!dono) await setPersonEmail(tx, { tenantId: inv.tenantId }, inv.personId, inv.email, kind);
+    }
     await tx.update(invitation).set({ acceptedAt: now, acceptedUserId: user.id }).where(eq(invitation.id, inv.id));
     await audit(tx, { tenantId: inv.tenantId, actorId: user.id, entity: "invitation", entityId: inv.id, action: "transition", after: { aceito: true, membershipId: m!.id } });
     return { slug: tenantSlug, membership: m! };

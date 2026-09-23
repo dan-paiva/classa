@@ -140,13 +140,14 @@ function LeadCard({ slug, lead: l, canAdvance, act, busy }: { slug: string; lead
 function LeadForm({ slug, onDone }: { slug: string; onDone: () => void }) {
   const qc = useQueryClient();
   const courses = useQuery({ queryKey: ["courses", slug], queryFn: () => api.courses(slug) });
-  const [v, setV] = useState({ name: "", email: "", phone: "", origin: "Site", courseId: "", temperature: "", consent: true });
+  const [v, setV] = useState({ name: "", email: "", phone: "", cpf: "", origin: "Site", courseId: "", temperature: "", consent: true });
   const create = useMutation({
     mutationFn: () =>
       school.createLead(slug, {
         name: v.name,
         email: v.email || null,
         phone: v.phone || null,
+        cpf: v.cpf || null,
         origin: v.origin,
         courseId: v.courseId || null,
         temperature: (v.temperature || null) as Lead["temperature"],
@@ -177,6 +178,9 @@ function LeadForm({ slug, onDone }: { slug: string; onDone: () => void }) {
         </Field>
         <Field label="Telefone ou WhatsApp" htmlFor="lead-phone">
           <input id="lead-phone" inputMode="tel" value={v.phone} onChange={set("phone")} />
+        </Field>
+        <Field label="CPF" htmlFor="lead-cpf" errors={issues.cpf} hint="Opcional agora. É ele que reconhece quem já é aluno ou já foi.">
+          <input id="lead-cpf" inputMode="numeric" value={v.cpf} onChange={set("cpf")} />
         </Field>
         <Field label="Origem" htmlFor="lead-origin">
           <select id="lead-origin" value={v.origin} onChange={set("origin")}>

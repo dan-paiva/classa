@@ -173,7 +173,12 @@ export const membership = pgTable(
   },
   (t) => [
     unique("membership_tenant_user_uq").on(t.tenantId, t.userId),
+    // a mesma pessoa pode ter vínculo de trabalho e de aluno, mas só um de cada (DOMINIO.md §3.4)
+    uniqueIndex("membership_person_profile_uq")
+      .on(t.tenantId, t.personId, t.profileType)
+      .where(sql`${t.personId} is not null`),
     index("membership_user_idx").on(t.userId),
+    index("membership_person_idx").on(t.tenantId, t.personId),
     check("membership_level_range", sql`${t.level} between 1 and 5`),
   ],
 );
@@ -253,6 +258,8 @@ export const course = pgTable(
     packageLessons: integer("package_lessons").notNull(),
     /** Horas de antecedência para o aluno cancelar sem perder a aula. */
     cancelNoticeHours: integer("cancel_notice_hours").notNull(),
+    /** Quem reserva a vaga open-entry: o próprio aluno (true) ou só a secretaria (DOMINIO.md §4.1). */
+    autoAgenda: boolean("auto_agenda").notNull().default(true),
     /** Valor de uma aula, em centavos. */
     lessonPriceCents: integer("lesson_price_cents").notNull(),
     modalities: text("modalities", { enum: MODALITIES }).array().notNull(),
@@ -302,8 +309,7 @@ export const person = pgTable(
       .notNull()
       .references(() => tenant.id),
     name: text("name").notNull(),
-    email: text("email"),
-    /** Só dígitos. */
+    /** Só dígitos. Chave de reconciliação da pessoa (DOMINIO.md §3.1.2). */
     cpf: text("cpf"),
     /** Só dígitos. */
     phone: text("phone"),
@@ -312,9 +318,40 @@ export const person = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    uniqueIndex("person_tenant_email_uq").on(t.tenantId, sql`lower(${t.email})`).where(sql`${t.email} is not null`),
     uniqueIndex("person_tenant_cpf_uq").on(t.tenantId, t.cpf).where(sql`${t.cpf} is not null`),
     index("person_tenant_name_idx").on(t.tenantId, t.name),
+  ],
+);
+
+export const PERSON_EMAIL_KINDS = ["pessoal", "corporativo"] as const;
+export type PersonEmailKind = (typeof PERSON_EMAIL_KINDS)[number];
+
+/**
+ * E-mails da pessoa (DOMINIO.md §3.1.1). São vários porque o mesmo ser humano
+ * pode ser colaborador pelo e-mail corporativo e aluno pelo pessoal, sem virar
+ * duas pessoas. O principal é o usado em cobrança e avisos.
+ */
+export const personEmail = pgTable(
+  "person_email",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => person.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    kind: text("kind", { enum: PERSON_EMAIL_KINDS }).notNull(),
+    isPrimary: boolean("is_primary").notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("person_email_tenant_email_uq").on(t.tenantId, sql`lower(${t.email})`),
+    unique("person_email_person_kind_uq").on(t.personId, t.kind),
+    uniqueIndex("person_email_primary_uq").on(t.personId).where(sql`${t.isPrimary}`),
+    index("person_email_person_idx").on(t.personId),
   ],
 );
 
@@ -414,6 +451,16 @@ export const room = pgTable(
   (t) => [unique("room_tenant_name_uq").on(t.tenantId, t.name)],
 );
 
+/**
+ * Regime: como o aluno se liga à turma (DOMINIO.md §5.9). Não confundir com
+ * modalidade, que é online ou presencial.
+ * - `regular`: o aluno pertence à turma e entra em todas as aulas dela;
+ * - `open_entry`: ninguém pertence; as vagas ficam abertas e o aluno reserva aula a aula;
+ * - `particular`: turma de uma vaga, criada na alocação da matrícula.
+ */
+export const CLASS_REGIMES = ["regular", "open_entry", "particular"] as const;
+export type ClassRegime = (typeof CLASS_REGIMES)[number];
+
 /** Turma: o que se repete toda semana e gera as aulas. Aula particular = turma individual de 1 vaga. */
 export const classGroup = pgTable(
   "class_group",
@@ -430,8 +477,12 @@ export const classGroup = pgTable(
     teacherId: uuid("teacher_id").references(() => teacher.id),
     roomId: uuid("room_id").references(() => room.id),
     modality: text("modality", { enum: MODALITIES }).notNull(),
+    regime: text("regime", { enum: CLASS_REGIMES }).notNull().default("regular"),
     capacity: integer("capacity").notNull(),
-    individual: boolean("individual").notNull().default(false),
+    /** Derivada do regime: a folha paga aula particular por valor fixo. Nunca se grava direto. */
+    individual: boolean("individual")
+      .notNull()
+      .generatedAlwaysAs(sql`regime = 'particular'`),
     /** Aula particular: valor fixo pago ao professor por aula (os demais cursos usam valor hora × duração). */
     teacherRateCents: integer("teacher_rate_cents"),
     startsOn: date("starts_on").notNull(),
@@ -443,6 +494,8 @@ export const classGroup = pgTable(
   (t) => [
     unique("class_group_course_name_uq").on(t.courseId, t.name),
     check("class_group_capacity_positive", sql`${t.capacity} > 0`),
+    check("class_group_particular_capacity", sql`${t.regime} <> 'particular' or ${t.capacity} = 1`),
+    index("class_group_open_entry_idx").on(t.tenantId, t.moduleId).where(sql`${t.regime} = 'open_entry'`),
     check("class_group_period", sql`${t.endsOn} >= ${t.startsOn}`),
     index("class_group_tenant_idx").on(t.tenantId),
   ],
@@ -549,9 +602,11 @@ export const enrollment = pgTable(
     courseId: uuid("course_id")
       .notNull()
       .references(() => course.id),
-    classGroupId: uuid("class_group_id")
-      .notNull()
-      .references(() => classGroup.id),
+    regime: text("regime", { enum: CLASS_REGIMES }).notNull().default("regular"),
+    /** Vazia no open-entry: o aluno não pertence a turma nenhuma (DOMINIO.md §5.9). */
+    classGroupId: uuid("class_group_id").references(() => classGroup.id),
+    /** No open-entry é o nível do aluno, e é ele que limita o que dá para reservar. */
+    moduleId: uuid("module_id").references(() => courseModule.id),
     modality: text("modality", { enum: MODALITIES }).notNull(),
     packageLessons: integer("package_lessons").notNull(),
     startsOn: date("starts_on").notNull(),
@@ -562,6 +617,11 @@ export const enrollment = pgTable(
   },
   (t) => [
     check("enrollment_package_positive", sql`${t.packageLessons} > 0`),
+    // open-entry não tem turma; os outros regimes têm. O nível é obrigatório no open-entry.
+    check(
+      "enrollment_regime_shape",
+      sql`(${t.regime} = 'open_entry' and ${t.classGroupId} is null and ${t.moduleId} is not null) or (${t.regime} <> 'open_entry' and ${t.classGroupId} is not null)`,
+    ),
     check("enrollment_period", sql`${t.endsOn} >= ${t.startsOn}`),
     index("enrollment_student_idx").on(t.studentId),
     index("enrollment_class_idx").on(t.classGroupId),
@@ -862,9 +922,10 @@ export const lead = pgTable(
     tenantId: uuid("tenant_id")
       .notNull()
       .references(() => tenant.id),
-    name: text("name").notNull(),
-    email: text("email"),
-    phone: text("phone"),
+    /** A pessoa nasce na captação: é o id que acompanha até depois de virar aluno (DOMINIO.md §6.5). */
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => person.id),
     origin: text("origin").notNull(),
     campaign: text("campaign"),
     courseId: uuid("course_id").references(() => course.id),
@@ -881,7 +942,7 @@ export const lead = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("lead_tenant_stage_idx").on(t.tenantId, t.stage)],
+  (t) => [index("lead_tenant_stage_idx").on(t.tenantId, t.stage), index("lead_person_idx").on(t.personId)],
 );
 
 export const workflowCard = pgTable(

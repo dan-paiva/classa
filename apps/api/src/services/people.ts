@@ -1,6 +1,7 @@
 import {
   and,
   asc,
+  desc,
   classGroup,
   classSchedule,
   course,
@@ -10,6 +11,7 @@ import {
   inArray,
   isNull,
   person,
+  personEmail,
   room,
   sql,
   student,
@@ -18,6 +20,7 @@ import {
   type RoomKind,
   type StudentStatus,
 } from "@classa/db";
+import type { PersonEmailKind } from "@classa/db";
 import { isValidCpf, isValidSlot, onlyDigits } from "@classa/domain";
 import { audit } from "../http/audit.ts";
 import { conflict, DomainError, invalid, notFound, unprocessable } from "../http/errors.ts";
@@ -30,10 +33,25 @@ import { endEnrollmentTx } from "./enrollments.ts";
 export type PersonInput = {
   name: string;
   email?: string | null;
+  /** Em qual caixa o e-mail entra. O cadastro comum é pessoal (DOMINIO.md §3.1.1). */
+  emailKind?: PersonEmailKind;
   cpf?: string | null;
   phone?: string | null;
   birthDate?: string | null;
 };
+
+/**
+ * E-mail que as telas mostram quando mostram um só: o principal.
+ * Fica como subconsulta para o SELECT continuar sendo um só (DOMINIO.md §3.1.1).
+ *
+ * `"person"."id"` vai escrito à mão de propósito: interpolar a coluna pelo
+ * drizzle gera `"id"` sem qualificar, e dentro da subconsulta isso casa com
+ * `person_email.id`. A comparação nunca bate e o e-mail volta nulo, sem erro.
+ */
+export const primaryEmailSql = sql<string | null>`(
+  select pe.email from person_email pe where pe.person_id = "person"."id"
+  order by pe.is_primary desc, pe.created_at limit 1
+)`;
 
 function normalizePerson(input: PersonInput) {
   const name = input.name.trim();
@@ -44,33 +62,77 @@ function normalizePerson(input: PersonInput) {
   if (cpf && !isValidCpf(cpf)) throw invalid("cpf", "CPF inválido");
   const phone = input.phone ? onlyDigits(input.phone) : null;
   if (phone && (phone.length < 10 || phone.length > 11)) throw invalid("phone", "Telefone com DDD, 10 ou 11 dígitos");
-  return { name, email, cpf, phone, birthDate: input.birthDate || null };
+  return { person: { name, cpf, phone, birthDate: input.birthDate || null }, email, emailKind: input.emailKind ?? ("pessoal" as const) };
 }
 
-/** Cria a pessoa. E-mail ou CPF repetido vira 409 com o id da pessoa que já existe. */
+/** A pessoa dona deste e-mail nesta escola, em qualquer uma das caixas. */
+export async function findPersonByEmail(db: Db, ctx: { tenantId: string }, email: string) {
+  const value = email.trim().toLowerCase();
+  if (!value) return null;
+  const [row] = await db
+    .select({ id: person.id, name: person.name })
+    .from(personEmail)
+    .innerJoin(person, eq(person.id, personEmail.personId))
+    .where(and(eq(personEmail.tenantId, ctx.tenantId), sql`lower(${personEmail.email}) = ${value}`));
+  return row ?? null;
+}
+
+/**
+ * Grava o e-mail da pessoa na caixa pedida; `null` esvazia a caixa.
+ * O primeiro e-mail da pessoa vira o principal; ao remover o principal, o que
+ * sobra assume, para a pessoa nunca ficar sem e-mail de cobrança tendo um.
+ */
+export async function setPersonEmail(db: Db, ctx: { tenantId: string }, personId: string, email: string | null, kind: PersonEmailKind = "pessoal") {
+  const existing = await db
+    .select({ id: personEmail.id, kind: personEmail.kind, isPrimary: personEmail.isPrimary })
+    .from(personEmail)
+    .where(eq(personEmail.personId, personId));
+  const current = existing.find((e) => e.kind === kind);
+  const value = email?.trim().toLowerCase() || null;
+
+  if (!value) {
+    if (!current) return;
+    await db.delete(personEmail).where(eq(personEmail.id, current.id));
+    const rest = existing.filter((e) => e.id !== current.id);
+    if (current.isPrimary && rest[0]) await db.update(personEmail).set({ isPrimary: true }).where(eq(personEmail.id, rest[0].id));
+    return;
+  }
+
+  const owner = await findPersonByEmail(db, ctx, value);
+  if (owner && owner.id !== personId) throw conflict("email", `Outra pessoa já usa este e-mail: ${owner.name}.`);
+  if (current) {
+    await db.update(personEmail).set({ email: value }).where(eq(personEmail.id, current.id));
+    return;
+  }
+  await db.insert(personEmail).values({ tenantId: ctx.tenantId, personId, email: value, kind, isPrimary: existing.length === 0 });
+}
+
+/** Cria a pessoa. E-mail ou CPF repetido vira 409 com o id da pessoa que já existe (DOMINIO.md §3.1.2). */
 async function insertPerson(db: Db, ctx: ServiceContext, input: PersonInput) {
-  const values = normalizePerson(input);
+  const { person: values, email, emailKind } = normalizePerson(input);
   // checa antes de inserir, na mesma conexão/transação (a constraint única continua garantindo)
-  for (const field of ["cpf", "email"] as const) {
-    const value = values[field];
-    if (!value) continue;
-    const [existing] = await db
-      .select({ id: person.id, name: person.name })
-      .from(person)
-      .where(and(eq(person.tenantId, ctx.tenantId), field === "cpf" ? eq(person.cpf, value) : sql`lower(${person.email}) = ${value}`));
-    if (existing) {
-      throw new DomainError(409, "person_exists", `Já existe uma pessoa com este ${field === "cpf" ? "CPF" : "e-mail"}: ${existing.name}.`, {
-        [field]: ["Já cadastrado"],
-        existingPersonId: [existing.id],
-      });
-    }
+  const found: [field: "cpf" | "email", match: { id: string; name: string }] | null = values.cpf
+    ? await db
+        .select({ id: person.id, name: person.name })
+        .from(person)
+        .where(and(eq(person.tenantId, ctx.tenantId), eq(person.cpf, values.cpf)))
+        .then((r) => (r[0] ? ["cpf", r[0]] : null))
+    : null;
+  const hit = found ?? (email ? await findPersonByEmail(db, ctx, email).then((r) => (r ? (["email", r] as const) : null)) : null);
+  if (hit) {
+    const [field, match] = hit;
+    throw new DomainError(409, "person_exists", `Já existe uma pessoa com este ${field === "cpf" ? "CPF" : "e-mail"}: ${match.name}.`, {
+      [field]: ["Já cadastrado"],
+      existingPersonId: [match.id],
+    });
   }
   try {
     const [row] = await db
       .insert(person)
       .values({ ...values, tenantId: ctx.tenantId })
       .returning();
-    return row!;
+    if (email) await setPersonEmail(db, ctx, row!.id, email, emailKind);
+    return { ...row!, email };
   } catch (err) {
     if (isUniqueViolation(err)) {
       const field = pgConstraint(err) === "person_tenant_cpf_uq" ? "cpf" : "email";
@@ -80,31 +142,90 @@ async function insertPerson(db: Db, ctx: ServiceContext, input: PersonInput) {
   }
 }
 
+/**
+ * Acha a pessoa por CPF ou e-mail e completa o que faltava; cria se não existir.
+ * É o caminho da captação do lead, onde reencontrar alguém é esperado e não é
+ * erro (DOMINIO.md §3.1.2: CPF ou e-mail igual é a mesma pessoa, sem perguntar).
+ * Nunca sobrescreve dado já preenchido — só preenche buraco.
+ */
+export async function findOrCreatePerson(db: Db, ctx: ServiceContext, input: PersonInput) {
+  const { person: values, email, emailKind } = normalizePerson(input);
+  const byCpf = values.cpf
+    ? await db
+        .select()
+        .from(person)
+        .where(and(eq(person.tenantId, ctx.tenantId), eq(person.cpf, values.cpf)))
+        .then((r) => r[0] ?? null)
+    : null;
+  const byEmail = byCpf ? null : email ? await findPersonByEmail(db, ctx, email) : null;
+  const matchId = byCpf?.id ?? byEmail?.id ?? null;
+
+  if (!matchId) {
+    const [row] = await db
+      .insert(person)
+      .values({ ...values, tenantId: ctx.tenantId })
+      .returning();
+    if (email) await setPersonEmail(db, ctx, row!.id, email, emailKind);
+    return { ...row!, email, created: true as const };
+  }
+
+  const [current] = await db.select().from(person).where(eq(person.id, matchId));
+  const patch: Partial<typeof person.$inferInsert> = {};
+  if (!current!.cpf && values.cpf) patch.cpf = values.cpf;
+  if (!current!.phone && values.phone) patch.phone = values.phone;
+  if (!current!.birthDate && values.birthDate) patch.birthDate = values.birthDate;
+  const [row] = Object.keys(patch).length
+    ? await db.update(person).set(patch).where(eq(person.id, matchId)).returning()
+    : [current!];
+  if (email) await setPersonEmail(db, ctx, matchId, email, emailKind);
+  return { ...row!, email: email ?? (await primaryEmailOf(db, matchId)), created: false as const };
+}
+
+async function primaryEmailOf(db: Db, personId: string) {
+  const [row] = await db
+    .select({ email: personEmail.email })
+    .from(personEmail)
+    .where(eq(personEmail.personId, personId))
+    .orderBy(desc(personEmail.isPrimary), asc(personEmail.createdAt))
+    .limit(1);
+  return row?.email ?? null;
+}
+
 async function resolvePerson(db: Db, ctx: ServiceContext, input: { personId?: string; person?: PersonInput }) {
   if (input.personId) {
     const [row] = await db
-      .select()
+      .select({ person, email: primaryEmailSql })
       .from(person)
       .where(and(eq(person.id, input.personId), eq(person.tenantId, ctx.tenantId)));
     if (!row) throw notFound("Pessoa");
-    return row;
+    return { ...row.person, email: row.email };
   }
   if (!input.person) throw invalid("name", "Informe a pessoa");
   return insertPerson(db, ctx, input.person);
 }
 
 export async function updatePerson(ctx: ServiceContext, personId: string, input: PersonInput) {
-  const values = normalizePerson(input);
+  const { person: values, email, emailKind } = normalizePerson(input);
   const [before] = await ctx.db
-    .select()
+    .select({ person, email: primaryEmailSql })
     .from(person)
     .where(and(eq(person.id, personId), eq(person.tenantId, ctx.tenantId)));
   if (!before) throw notFound("Pessoa");
   try {
     return await ctx.db.transaction(async (tx) => {
       const [row] = await tx.update(person).set(values).where(eq(person.id, personId)).returning();
-      await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "person", entityId: personId, action: "update", before, after: row });
-      return row!;
+      await setPersonEmail(tx, ctx, personId, email, emailKind);
+      const after = { ...row!, email };
+      await audit(tx, {
+        tenantId: ctx.tenantId,
+        actorId: ctx.actorId,
+        entity: "person",
+        entityId: personId,
+        action: "update",
+        before: { ...before.person, email: before.email },
+        after,
+      });
+      return after;
     });
   } catch (err) {
     if (isUniqueViolation(err)) {
@@ -265,7 +386,7 @@ export async function setTeacherActive(ctx: ServiceContext, id: string, active: 
 /** Lista com nome, cursos habilitados e carga semanal (aulas por semana nas turmas ativas). */
 export async function listTeachers(ctx: ServiceContext) {
   const rows = await ctx.db
-    .select({ teacher, person })
+    .select({ teacher, person, email: primaryEmailSql })
     .from(teacher)
     .innerJoin(person, eq(person.id, teacher.personId))
     .where(eq(teacher.tenantId, ctx.tenantId))
@@ -281,9 +402,9 @@ export async function listTeachers(ctx: ServiceContext) {
     .innerJoin(classGroup, eq(classGroup.id, classSchedule.classGroupId))
     .where(and(eq(classGroup.tenantId, ctx.tenantId), isNull(classGroup.deactivatedAt), sql`${classGroup.endsOn} >= ${ctx.now.toISOString().slice(0, 10)}`))
     .groupBy(classGroup.teacherId);
-  return rows.map(({ teacher: t, person: p }) => ({
+  return rows.map(({ teacher: t, person: p, email }) => ({
     ...t,
-    person: p,
+    person: { ...p, email },
     courses: courses.filter((c) => c.teacherId === t.id),
     weeklyLoad: load.find((l) => l.teacherId === t.id)?.lessons ?? 0,
   }));

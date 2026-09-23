@@ -7,11 +7,11 @@ import { draftFromRules, RulesFields, rulesFromDraft, type RulesDraft } from "./
 
 /* regras iniciais por tipo, espelhando apps/api/src/modules/courses/domain.ts */
 const DEFAULTS: Record<CourseType, RulesDraft> = {
-  grupo: draftFromRules({ capacity: 8, lessonMinutes: 45, packageLessons: 48, cancelNoticeHours: 6, lessonPriceCents: 6000, modalities: ["online"] }),
-  particular: draftFromRules({ capacity: 1, lessonMinutes: 60, packageLessons: 32, cancelNoticeHours: 24, lessonPriceCents: 14000, modalities: ["online", "presencial"] }),
-  hibrido: draftFromRules({ capacity: 8, lessonMinutes: 45, packageLessons: 48, cancelNoticeHours: 6, lessonPriceCents: 6000, modalities: ["online", "presencial"] }),
-  workshop: draftFromRules({ capacity: 20, lessonMinutes: 90, packageLessons: 1, cancelNoticeHours: 24, lessonPriceCents: 8000, modalities: ["online"] }),
-  turmas_dedicadas: draftFromRules({ capacity: 25, lessonMinutes: 50, packageLessons: 36, cancelNoticeHours: 6, lessonPriceCents: 40000, modalities: ["presencial", "online"] }),
+  grupo: draftFromRules({ capacity: 8, lessonMinutes: 45, packageLessons: 48, cancelNoticeHours: 6, lessonPriceCents: 6000, modalities: ["online"], autoAgenda: true }),
+  particular: draftFromRules({ capacity: 1, lessonMinutes: 60, packageLessons: 32, cancelNoticeHours: 24, lessonPriceCents: 14000, modalities: ["online", "presencial"], autoAgenda: true }),
+  hibrido: draftFromRules({ capacity: 8, lessonMinutes: 45, packageLessons: 48, cancelNoticeHours: 6, lessonPriceCents: 6000, modalities: ["online", "presencial"], autoAgenda: true }),
+  workshop: draftFromRules({ capacity: 20, lessonMinutes: 90, packageLessons: 1, cancelNoticeHours: 24, lessonPriceCents: 8000, modalities: ["online"], autoAgenda: true }),
+  turmas_dedicadas: draftFromRules({ capacity: 25, lessonMinutes: 50, packageLessons: 36, cancelNoticeHours: 6, lessonPriceCents: 40000, modalities: ["presencial", "online"], autoAgenda: true }),
 };
 
 export function Courses() {

@@ -14,6 +14,7 @@ import { Flows } from "./pages/Flows.tsx";
 import { Invitation } from "./pages/Invitation.tsx";
 import { Leads } from "./pages/Leads.tsx";
 import { MyArea } from "./pages/MyArea.tsx";
+import { OpenSlots } from "./pages/OpenSlots.tsx";
 import { LessonDetail } from "./pages/LessonDetail.tsx";
 import { Login } from "./pages/Login.tsx";
 import { Payroll } from "./pages/Payroll.tsx";
@@ -56,6 +57,7 @@ const companiesRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/
 const companyRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/empresas/$companyId", component: CompanyDetail });
 const leadsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/leads", component: Leads });
 const flowsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/acoes", component: Flows });
+const openSlotsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/vagas", component: OpenSlots });
 const myAreaRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/minha-area", component: MyArea });
 const reportsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/relatorios", component: Reports });
 const auditRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/auditoria", component: Audit });
@@ -82,6 +84,7 @@ const routeTree = rootRoute.addChildren([
     payrollRoute,
     reportsRoute,
     auditRoute,
+    openSlotsRoute,
     myAreaRoute,
     leadsRoute,
     flowsRoute,
