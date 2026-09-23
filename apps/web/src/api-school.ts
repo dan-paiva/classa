@@ -221,6 +221,8 @@ export type Enrollment = {
   courseColor: string;
   className: string | null;
   moduleName: string | null;
+  /** Paga antes do nivelamento: ainda sem turma nem nível (DOMINIO.md §7.5.1). */
+  levelPending: boolean;
   balance: number;
   used: number;
   granted: number;

@@ -63,15 +63,24 @@ function flowDef(flow: string): FlowDefinition {
 }
 /** Área de cada etapa nesta escola: a definição do fluxo com o que a escola escolheu por cima (D16). */
 const areaOf = (c: Env, def: FlowDefinition, stage: string) => stageArea(def, stage, stageOverrides(def.key, c.var.tenant.settings));
-const canSeeFlow = (c: Env, def: FlowDefinition) => flowAreas(def, stageOverrides(def.key, c.var.tenant.settings)).some((a) => areaCan(c, a, "ver"));
+/** Entrada sem resposta depois de três faltas: o CX também vê, para procurar o aluno (D17). */
+const UNRESPONSIVE_AREA: Area = "cx";
+const canSeeFlow = (c: Env, def: FlowDefinition) =>
+  flowAreas(def, stageOverrides(def.key, c.var.tenant.settings)).some((a) => areaCan(c, a, "ver")) ||
+  (def.key === "entrada" && areaCan(c, UNRESPONSIVE_AREA, "ver"));
 
-type CardLike = { flow: string; stage: string; visited?: string[] };
+type CardLike = { flow: string; stage: string; visited?: string[]; data?: Record<string, unknown> };
 function cardAccess(c: Env, card: CardLike) {
   const def = flowDef(card.flow);
   const current = areaOf(c, def, card.stage);
   const next = nextStage(def, card.stage);
   const nextArea = next ? areaOf(c, def, next.key) : null;
-  const seen = [current, ...(nextArea ? [nextArea] : []), ...(card.visited ?? []).map((s) => areaOf(c, def, s))];
+  const seen = [
+    current,
+    ...(nextArea ? [nextArea] : []),
+    ...(card.visited ?? []).map((s) => areaOf(c, def, s)),
+    ...(def.key === "entrada" && card.data?.unresponsive === true ? [UNRESPONSIVE_AREA] : []),
+  ];
   const owner = areaCan(c, current, "operar");
   const puller = !!nextArea && areaCan(c, nextArea, "operar");
   const moveTo = (to: string) => {

@@ -41,7 +41,7 @@ import type { ServiceContext } from "./context.ts";
 import { issueContractTx, listInstallments, registerPayment } from "./finance.ts";
 import { changeLessonTeacher } from "./lessons.ts";
 import { createStudent, createTeacher, findOrCreatePerson, primaryEmailSql, setStudentStatus, updatePerson } from "./people.ts";
-import { createEnrollment, transferEnrollment } from "./enrollments.ts";
+import { completeEnrollmentLevel, createEnrollment, transferEnrollment } from "./enrollments.ts";
 import { agendaPeople, createEvent, lessonClashes, markNoShow, recordLevelingResult } from "./agenda.ts";
 
 const today = (ctx: ServiceContext) => dateInZone(ctx.now, ctx.timezone);
@@ -260,31 +260,52 @@ const ENTRY_EFFECTS: Record<string, Effect> = {
     if (l.stage === "captado" || l.stage === "contato") {
       await ctx.db.update(lead).set({ stage: "nivelamento", stageChangedAt: ctx.now }).where(eq(lead.id, l.id));
     }
-    return { note: ["Nivelamento na agenda.", ...clashes.map((c) => `Aviso: ${c}`)].join(" "), data: { eventId: event.id } };
+    // remarcou: o aluno respondeu, então a marca de "sem resposta" sai
+    return { note: ["Nivelamento na agenda.", ...clashes.map((c) => `Aviso: ${c}`)].join(" "), data: { eventId: event.id, unresponsive: false } };
   },
   nivelado: async (ctx, d) => {
     if (!str(d.eventId)) throw unprocessable("O card não tem nivelamento marcado. Volte para Nivelamento a marcar.");
     await recordLevelingResult(ctx, str(d.eventId), { suggestedModuleId: str(d.suggestedModuleId), resultNotes: str(d.levelingNotes) || null });
     return { note: "Resultado gravado no nivelamento." };
   },
+  // pagou antes de nivelar: vira aluno agora, com a matrícula esperando o nível
+  fechado: async (ctx, d) => {
+    const l = await getLead(ctx, str(d.leadId));
+    const studentId = await studentOf(ctx, l.personId);
+    const installments = Number(d.installments) || undefined;
+    const e = await createEnrollment(ctx, {
+      studentId,
+      courseId: str(d.courseId),
+      packageLessons: Number(d.packageLessons),
+      levelPending: true,
+      contract: installments ? { installments } : undefined,
+    });
+    await ctx.db.update(lead).set({ studentId }).where(eq(lead.id, l.id));
+    return { note: "Aluno criado e contrato emitido. A matrícula espera o nivelamento.", data: { studentId, enrollmentId: e.id } };
+  },
+  pago: async (ctx, d) => {
+    const parcelas = await listInstallments(ctx, { enrollmentId: str(d.enrollmentId) });
+    const primeira = parcelas.filter((i) => i.status !== "cancelada").sort((a, b) => a.number - b.number)[0];
+    // sem parcela é aluno de empresa B2B: quem paga é a empresa
+    if (primeira && primeira.status !== "paga") throw unprocessable("A primeira parcela ainda não está paga. Registre o pagamento no Financeiro.");
+    return { note: primeira ? "Primeira parcela paga." : "Sem parcela para o aluno: quem paga é a empresa." };
+  },
   matricula: async (ctx, d) => {
     const regime = str(d.regime);
     if (regime !== "regular" && regime !== "open_entry") throw invalid("regime", "Escolha o regime: regular ou open-entry");
-    if (regime === "regular" && !str(d.classGroupId)) throw unprocessable("Para Matrícula no regime regular, preencha: Turma.");
-    const l = await getLead(ctx, str(d.leadId));
-    const studentId = await studentOf(ctx, l.personId);
-    const e = await createEnrollment(ctx, {
-      studentId,
+    if (regime === "regular" && !str(d.classGroupId)) throw unprocessable("Para Matrícula completa no regime regular, preencha: Turma.");
+    if (!str(d.enrollmentId)) throw unprocessable("O card não tem matrícula aberta. Volte para Fechado.");
+    await completeEnrollmentLevel(ctx, str(d.enrollmentId), {
       regime,
       classGroupId: regime === "regular" ? str(d.classGroupId) : null,
-      courseId: str(d.courseId) || undefined,
       moduleId: regime === "open_entry" ? str(d.suggestedModuleId) : null,
-      packageLessons: Number(d.packageLessons),
     });
-    await ctx.db.update(lead).set({ stage: "matriculado", studentId, stageChangedAt: ctx.now }).where(eq(lead.id, l.id));
-    return { note: "Lead convertido em aluno e matrícula aberta.", data: { studentId, enrollmentId: e.id } };
+    await ctx.db.update(lead).set({ stage: "matriculado", stageChangedAt: ctx.now }).where(eq(lead.id, str(d.leadId)));
+    return { note: "Matrícula completa: o aluno entrou nas aulas." };
   },
   perdido: async (ctx, d) => {
+    // depois de fechar, a pessoa é aluno com contrato: sair é cancelar, com retenção
+    if (str(d.enrollmentId)) throw unprocessable("Já é aluno com contrato. Para desistir, use o fluxo Cancelamento e retenção.");
     const l = await getLead(ctx, str(d.leadId));
     if (l.stage !== "matriculado" && l.stage !== "perdido") await moveLead(ctx, l.id, { to: "perdido", reason: str(d.lostReason) });
     return { note: `Lead perdido: ${str(d.lostReason)}.` };
@@ -431,7 +452,8 @@ export async function moveCard(ctx: ServiceContext, id: string, to: string, note
 
 /**
  * Não compareceu ao nivelamento (§7.5.1): o card volta para "a marcar" e a
- * falta conta. Na terceira, o lead vai a Perdido com "Sem resposta" (D17).
+ * falta conta. Na terceira, fica marcado "sem resposta" para o CX (D17): o
+ * aluno já pagou, então não vira Perdido.
  * Os efeitos de marcar em diante são liberados para rodar de novo, com outra data.
  */
 export async function entryNoShow(ctx: ServiceContext, id: string) {
@@ -440,15 +462,13 @@ export async function entryNoShow(ctx: ServiceContext, id: string) {
   if (card.stage !== "marcado" && card.stage !== "comunicada") throw unprocessable("O card não está com nivelamento marcado.");
   if (str(card.data.eventId)) await markNoShow(ctx, str(card.data.eventId));
   const noShows = (Number(card.data.noShows) || 0) + 1;
-  if (noShows >= ENTRY_MAX_NO_SHOWS) {
-    await ctx.db.update(workflowCard).set({ data: { ...card.data, noShows, lostReason: "Sem resposta" } }).where(eq(workflowCard.id, id));
-    return moveCard(ctx, id, "perdido", `${noShows}ª falta no nivelamento`);
-  }
+  // já pagou: não vira Perdido. Na terceira, o card fica marcado para o CX procurar (D17)
+  const unresponsive = noShows >= ENTRY_MAX_NO_SHOWS;
   const { marcado: _m, comunicada: _c, nivelado: _n, ...keep } = (card.data.effectsDone as Record<string, boolean> | undefined) ?? {};
   const { levelingStartsAt: _s, eventId: _e, ...rest } = card.data;
   const [row] = await ctx.db
     .update(workflowCard)
-    .set({ stage: "a_marcar", data: { ...rest, noShows, effectsDone: keep }, stageChangedAt: ctx.now })
+    .set({ stage: "a_marcar", data: { ...rest, noShows, unresponsive, effectsDone: keep }, stageChangedAt: ctx.now })
     .where(eq(workflowCard.id, id))
     .returning();
   await ctx.db.insert(workflowTransition).values({
@@ -457,7 +477,9 @@ export async function entryNoShow(ctx: ServiceContext, id: string) {
     fromStage: card.stage,
     toStage: "a_marcar",
     actorId: ctx.actorId,
-    note: `Não compareceu ao nivelamento (${noShows} de ${ENTRY_MAX_NO_SHOWS}). Marque outra data.`,
+    note: unresponsive
+      ? `Não compareceu ao nivelamento pela ${noShows}ª vez. Sem resposta: o CX precisa procurar o aluno.`
+      : `Não compareceu ao nivelamento (${noShows} de ${ENTRY_MAX_NO_SHOWS}). Marque outra data.`,
   });
   await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "fluxo:entrada", entityId: id, action: "transition", before: card, after: row });
   return row!;

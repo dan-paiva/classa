@@ -87,14 +87,19 @@ export async function createEnrollment(
     modality?: Modality;
     /** Emite o contrato com parcelas (padrão true). */
     contract?: false | { discountCents?: number; installments?: number; dueDay?: number };
+    /** Paga antes do nivelamento: sem turma nem nível até `completeEnrollmentLevel`. */
+    levelPending?: boolean;
   },
 ) {
   const s = await getStudentRow(ctx.db, ctx, input.studentId);
   if (["cancelado", "inativo"].includes(s.status)) throw unprocessable("Aluno cancelado ou inativo não pode ser matriculado. Reative o aluno antes.");
 
   const regime: ClassRegime = input.regime ?? "regular";
-  const cg = input.classGroupId ? await getClassGroupRow(ctx.db, ctx, input.classGroupId) : null;
-  if (regime === "open_entry") {
+  const pending = !!input.levelPending;
+  const cg = input.classGroupId && !pending ? await getClassGroupRow(ctx.db, ctx, input.classGroupId) : null;
+  if (pending) {
+    if (!input.courseId) throw invalid("courseId", "Escolha o curso");
+  } else if (regime === "open_entry") {
     if (cg) throw invalid("classGroupId", "Matrícula open-entry não fica presa a uma turma.");
     if (!input.courseId) throw invalid("courseId", "Escolha o curso");
     if (!input.moduleId) throw invalid("moduleId", "Escolha o nível: é ele que limita o que o aluno pode reservar.");
@@ -108,8 +113,8 @@ export async function createEnrollment(
   const [c] = await ctx.db.select().from(course).where(and(eq(course.id, courseId), eq(course.tenantId, ctx.tenantId)));
   if (!c || c.deactivatedAt) throw unprocessable("O curso está inativo.");
 
-  const moduleId = cg ? cg.moduleId : input.moduleId!;
-  if (regime === "open_entry") {
+  const moduleId = pending ? null : cg ? cg.moduleId : input.moduleId!;
+  if (regime === "open_entry" && !pending) {
     const [m] = await ctx.db.select().from(courseModule).where(and(eq(courseModule.id, moduleId!), eq(courseModule.courseId, c.id)));
     if (!m) throw invalid("moduleId", "Módulo não pertence ao curso");
     if (m.deactivatedAt) throw invalid("moduleId", "Módulo inativo");
@@ -146,13 +151,60 @@ export async function createEnrollment(
     }
     const [e] = await tx
       .insert(enrollment)
-      .values({ tenantId: ctx.tenantId, studentId: s.id, courseId: c.id, regime, classGroupId: cg?.id ?? null, moduleId, modality, packageLessons, startsOn, endsOn })
+      .values({ tenantId: ctx.tenantId, studentId: s.id, courseId: c.id, regime, classGroupId: cg?.id ?? null, moduleId, modality, packageLessons, startsOn, endsOn, levelPending: pending })
       .returning();
     await tx.insert(creditEntry).values({ tenantId: ctx.tenantId, enrollmentId: e!.id, kind: "contratacao", amount: packageLessons, actorId: ctx.actorId });
     const lessons = await enrollInLessons(tx, ctx, e!);
     await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "enrollment", entityId: e!.id, action: "create", after: { ...e, lessons } });
     if (contractInput !== false) await issueContractTx(tx, ctx, e!.id, contractInput ?? {});
     return e!;
+  });
+}
+
+/**
+ * Completa a matrícula que foi paga antes do nivelamento (DOMINIO.md §7.5.1):
+ * ganha o regime e a turma (regular) ou o nível (open-entry), e entra nas aulas.
+ * As mesmas travas da matrícula nova valem aqui: curso, regime da turma e vagas.
+ */
+export async function completeEnrollmentLevel(
+  ctx: ServiceContext,
+  id: string,
+  input: { regime: ClassRegime; classGroupId?: string | null; moduleId?: string | null },
+) {
+  const e = await getEnrollmentRow(ctx.db, ctx, id);
+  if (!e.levelPending) throw unprocessable("Esta matrícula já tem turma ou nível.");
+  if (e.endedAt) throw unprocessable("A matrícula está encerrada.");
+  let classGroupId: string | null = null;
+  let moduleId: string | null = null;
+  let cg: Awaited<ReturnType<typeof getClassGroupRow>> | null = null;
+  if (input.regime === "open_entry") {
+    if (!input.moduleId) throw invalid("moduleId", "Escolha o nível: é ele que limita o que o aluno pode reservar.");
+    const [m] = await ctx.db.select().from(courseModule).where(and(eq(courseModule.id, input.moduleId), eq(courseModule.courseId, e.courseId)));
+    if (!m || m.deactivatedAt) throw invalid("moduleId", "O nível precisa ser um módulo ativo do curso da matrícula");
+    moduleId = m.id;
+  } else {
+    if (!input.classGroupId) throw invalid("classGroupId", "Escolha a turma");
+    cg = await getClassGroupRow(ctx.db, ctx, input.classGroupId);
+    if (cg.deactivatedAt) throw unprocessable("A turma está inativa.");
+    if (cg.courseId !== e.courseId) throw invalid("classGroupId", "A turma precisa ser do curso da matrícula");
+    if (cg.regime !== input.regime) throw invalid("regime", `A turma "${cg.name}" é do regime ${cg.regime}.`);
+    classGroupId = cg.id;
+    moduleId = cg.moduleId;
+  }
+  return ctx.db.transaction(async (tx) => {
+    if (cg) {
+      await tx.execute(sql`select id from class_group where id = ${cg.id} for update`);
+      if ((await activeCount(tx, cg.id)) >= cg.capacity) throw unprocessable(`A turma "${cg.name}" está cheia (${cg.capacity} vagas).`);
+    }
+    const endsOn = cg && cg.endsOn < e.endsOn ? cg.endsOn : e.endsOn;
+    const [row] = await tx
+      .update(enrollment)
+      .set({ regime: input.regime, classGroupId, moduleId, endsOn, levelPending: false, ...(cg ? { modality: cg.modality } : {}) })
+      .where(eq(enrollment.id, id))
+      .returning();
+    const lessons = await enrollInLessons(tx, ctx, row!);
+    await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "enrollment", entityId: id, action: "update", before: e, after: { ...row, lessons } });
+    return row!;
   });
 }
 
@@ -202,6 +254,7 @@ export async function transferEnrollment(ctx: ServiceContext, id: string, classG
   const before = await getEnrollmentRow(ctx.db, ctx, id);
   if (before.endedAt) throw unprocessable("A matrícula está encerrada.");
   if (before.regime === "open_entry") throw unprocessable("Matrícula open-entry não fica presa a turma: mude o nível dela.");
+  if (before.levelPending) throw unprocessable("A matrícula aguarda o nivelamento: a turma é definida no fluxo Entrada do aluno.");
   if (before.classGroupId === classGroupId) throw invalid("classGroupId", "Escolha outra turma");
   const target = await getClassGroupRow(ctx.db, ctx, classGroupId);
   if (target.courseId !== before.courseId) throw invalid("classGroupId", "A turma precisa ser do mesmo curso. Para trocar de curso, encerre e abra outra matrícula.");

@@ -435,7 +435,9 @@ function EnrollmentsTab({ slug, studentId, enrollments, onChange, canEnroll }: {
                     {e.courseName}
                   </span>
                   <div className="small">
-                    {e.classGroupId ? (
+                    {e.levelPending ? (
+                      <Badge tone="warn">Aguardando nivelamento</Badge>
+                    ) : e.classGroupId ? (
                       <Link to="/e/$slug/turmas/$classGroupId" params={{ slug, classGroupId: e.classGroupId }}>
                         {e.className}
                       </Link>
@@ -499,6 +501,8 @@ function TransferButton({ slug, enrollment, onDone }: { slug: string; enrollment
       await onDone();
     },
   });
+  // aguardando nivelamento: a turma vem do fluxo de entrada, não daqui
+  if (enrollment.levelPending) return null;
   if (!open)
     return (
       <button type="button" className="btn-link" onClick={() => setOpen(true)}>

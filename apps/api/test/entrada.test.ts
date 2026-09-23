@@ -36,6 +36,7 @@ type Card = { id: string; stage: string; data: Record<string, unknown>; canOpera
 let com: ReturnType<typeof as>;
 let ped: ReturnType<typeof as>;
 let adm: ReturnType<typeof as>;
+let cx: ReturnType<typeof as>;
 let courseId = "";
 let n1 = "";
 let n2 = "";
@@ -75,6 +76,7 @@ beforeAll(async () => {
   com = as(await invite("com@entrada.classa.dev", "com"));
   ped = as(await invite("ped@entrada.classa.dev", "ped"));
   adm = as(await invite("adm@entrada.classa.dev", "adm"));
+  cx = as(await invite("cx@entrada.classa.dev", "cx"));
 });
 
 const board = async (who: ReturnType<typeof as>) => (await body<{ cards: Card[] }>(await who("/flows/entrada/cards"))).cards;
@@ -89,16 +91,48 @@ async function newEntry(name: string, cpfBase: string) {
   return { lead, card };
 }
 
+/** Primeira parcela da matrícula do card, paga pelo financeiro (aqui, o admin). */
+async function payFirst(studentId: string) {
+  const { installments } = await body<{ installments: { id: string; number: number }[] }>(await admin.json(`/installments?studentId=${studentId}`));
+  const first = [...installments].sort((a, b) => a.number - b.number)[0]!;
+  await body(await admin.json(`/installments/${first.id}/payments`, "POST", { method: "pix" }));
+}
+
+/** Fecha, paga e leva o card ao pedagógico ("a marcar"). */
+async function closeAndPay(cardId: string) {
+  const { card } = await body<{ card: Card }>(await move(com, cardId, "fechado"));
+  await payFirst(String(card.data.studentId));
+  await body(await move(com, cardId, "pago"));
+  await body(await move(ped, cardId, "a_marcar"));
+  return card;
+}
+
 describe("entrada do aluno", () => {
-  it("atravessa comercial, pedagógico e administrativo até a matrícula", async () => {
+  it("fecha e paga antes do nivelamento, e só depois completa a matrícula", async () => {
     const { lead, card } = await newEntry("Joana Entrada", "123456780");
     expect(card.stage).toBe("dados");
     expect(card.data.courseId).toBe(courseId); // veio do lead
 
-    // o pedagógico vê: é quem puxa a próxima etapa. O administrativo ainda não.
+    // fechado: vira aluno, com matrícula aguardando nível e contrato emitido
+    const fechado = (await body<{ card: Card }>(await move(com, card.id, "fechado"))).card;
+    const studentId = String(fechado.data.studentId);
+    const aguardando = await body<{ enrollments: { id: string; classGroupId: string | null; moduleId: string | null; levelPending: boolean }[] }>(
+      await admin.json(`/enrollments?studentId=${studentId}`),
+    );
+    expect(aguardando.enrollments).toEqual([expect.objectContaining({ id: fechado.data.enrollmentId, classGroupId: null, moduleId: null, levelPending: true })]);
+
+    // a turma vem do nivelamento, não de uma troca de turma por fora
+    expect((await admin.json(`/enrollments/${fechado.data.enrollmentId}/transfer`, "POST", { classGroupId: turmaN2 })).status).toBe(422);
+
+    // sem pagamento, não passa; o pedagógico ainda não vê
+    expect((await move(com, card.id, "pago")).status).toBe(422);
+    expect((await board(ped)).map((c) => c.id)).not.toContain(card.id);
+    await payFirst(studentId);
+    await body(await move(com, card.id, "pago"));
+
+    // pago: o pedagógico vê e puxa. O administrativo ainda não.
     expect((await board(ped)).map((c) => c.id)).toContain(card.id);
     expect((await board(adm)).map((c) => c.id)).not.toContain(card.id);
-
     await body(await move(ped, card.id, "a_marcar"));
     // marcar exige data e avaliador
     expect((await move(ped, card.id, "marcado")).status).toBe(422);
@@ -106,7 +140,7 @@ describe("entrada do aluno", () => {
     const marcado = (await body<{ card: Card }>(await move(ped, card.id, "marcado"))).card;
     expect(marcado.data.eventId).toBeTruthy();
 
-    // o nivelamento está na agenda, com o lead como avaliado
+    // o nivelamento está na agenda, com a pessoa como avaliada
     const ev = await body<{ event: { kind: string; evaluatedPersonId: string } }>(await admin.json(`/events/${marcado.data.eventId}`));
     expect(ev.event).toMatchObject({ kind: "nivelamento", evaluatedPersonId: lead.personId });
 
@@ -116,23 +150,32 @@ describe("entrada do aluno", () => {
     const done = await body<{ event: { state: string; suggestedModuleId: string } }>(await admin.json(`/events/${marcado.data.eventId}`));
     expect(done.event).toMatchObject({ state: "realizado", suggestedModuleId: n2 });
 
-    // agora o administrativo vê e puxa para a matrícula
+    // agora o administrativo vê e completa a matrícula
     expect((await board(adm)).find((c) => c.id === card.id)?.canOperate).toBe(true);
     expect((await move(adm, card.id, "matricula")).status).toBe(422); // falta regime
     await body(await patch(adm, card.id, { regime: "regular", classGroupId: turmaN2 }));
-    const matriculado = (await body<{ card: Card }>(await move(adm, card.id, "matricula"))).card;
-    expect(matriculado.data.enrollmentId).toBeTruthy();
+    await body(await move(adm, card.id, "matricula"));
     await body(await move(adm, card.id, "concluida"));
 
     const leads = await body<{ leads: { id: string; stage: string; studentId: string | null }[] }>(await admin.json("/leads"));
-    expect(leads.leads.find((l) => l.id === lead.id)).toMatchObject({ stage: "matriculado", studentId: matriculado.data.studentId });
-    const { enrollments } = await body<{ enrollments: { classGroupId: string }[] }>(await admin.json(`/enrollments?studentId=${matriculado.data.studentId}`));
-    expect(enrollments.map((e) => e.classGroupId)).toEqual([turmaN2]);
+    expect(leads.leads.find((l) => l.id === lead.id)).toMatchObject({ stage: "matriculado", studentId });
+    // a mesma matrícula, agora com turma: nada de matrícula nova
+    const { enrollments } = await body<{ enrollments: { id: string; classGroupId: string; levelPending: boolean }[] }>(await admin.json(`/enrollments?studentId=${studentId}`));
+    expect(enrollments).toEqual([expect.objectContaining({ id: fechado.data.enrollmentId, classGroupId: turmaN2, levelPending: false })]);
 
     // quem passou continua vendo, mas não move mais
     const visto = (await board(com)).find((c) => c.id === card.id);
     expect(visto?.canOperate).toBe(false);
     expect((await move(com, card.id, "dados")).status).toBe(403);
+  });
+
+  it("depois de fechar, não dá para perder: a saída é Cancelamento e retenção", async () => {
+    const { card } = await newEntry("Lead Fechado", "135792460");
+    await body(await patch(com, card.id, { lostReason: "Preço" }));
+    await body(await move(com, card.id, "fechado"));
+    const res = await move(com, card.id, "perdido");
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ message: expect.stringContaining("Cancelamento e retenção") });
   });
 
   it("criar é do comercial, dono da primeira etapa", async () => {
@@ -156,9 +199,10 @@ describe("entrada do aluno", () => {
     expect(ficha.student.person.email).toBe("volta@exemplo.dev");
   });
 
-  it("não compareceu volta para 'a marcar'; na terceira falta o lead é perdido", async () => {
+  it("não compareceu volta para 'a marcar'; na terceira fica 'sem resposta', sem perder quem já pagou", async () => {
     const { lead, card } = await newEntry("Lead Sumido", "111222330");
-    await body(await move(ped, card.id, "a_marcar"));
+    await closeAndPay(card.id);
+    expect((await board(cx)).some((c) => c.id === card.id)).toBe(false);
     for (let i = 1; i <= 3; i++) {
       await body(await patch(ped, card.id, { levelingStartsAt: levelingAt.replace("T14", `T${9 + i}`), evaluatorPersonId: avaliador }));
       const m = (await body<{ card: Card }>(await move(ped, card.id, "marcado"))).card;
@@ -166,22 +210,26 @@ describe("entrada do aluno", () => {
       const after = (await body<{ card: Card }>(await ped(`/cards/${card.id}/no-show`, "POST"))).card;
       const ev = await body<{ event: { state: string } }>(await admin.json(`/events/${eventId}`));
       expect(ev.event.state).toBe("nao_compareceu");
-      if (i < 3) {
-        expect(after).toMatchObject({ stage: "a_marcar", data: { noShows: i } });
-        expect(after.data.eventId).toBeUndefined();
-      } else {
-        expect(after.stage).toBe("perdido");
-      }
+      expect(after).toMatchObject({ stage: "a_marcar", data: { noShows: i, unresponsive: i >= 3 } });
+      expect(after.data.eventId).toBeUndefined();
     }
-    const leads = await body<{ leads: { id: string; stage: string; lostReason: string }[] }>(await admin.json("/leads"));
-    expect(leads.leads.find((l) => l.id === lead.id)).toMatchObject({ stage: "perdido", lostReason: "Sem resposta" });
+    const leads = await body<{ leads: { id: string; stage: string }[] }>(await admin.json("/leads"));
+    expect(leads.leads.find((l) => l.id === lead.id)!.stage).not.toBe("perdido");
+    // o CX passa a ver o card, só para procurar o aluno
+    const doCx = (await board(cx)).find((c) => c.id === card.id);
+    expect(doCx?.canOperate).toBe(false);
+    expect((await move(cx, card.id, "marcado")).status).toBe(403);
+    // remarcou: a marca sai e o card some para o CX
+    await body(await patch(ped, card.id, { levelingStartsAt: levelingAt.replace("T14", "T15"), evaluatorPersonId: avaliador }));
+    await body(await move(ped, card.id, "marcado"));
+    expect((await board(cx)).some((c) => c.id === card.id)).toBe(false);
   });
 
   it("sem vaga na semana pedida: fica em 'a marcar' com a próxima data, e o comercial vê", async () => {
     const { card } = await newEntry("Lead Sem Vaga", "444555660");
     // fora de "a marcar", não
     expect((await ped(`/cards/${card.id}/no-slot`, "POST", { nextPossibleOn: "2099-01-10" })).status).toBe(422);
-    await body(await move(ped, card.id, "a_marcar"));
+    await closeAndPay(card.id);
     // o comercial não registra: é do pedagógico
     expect((await com(`/cards/${card.id}/no-slot`, "POST", { nextPossibleOn: "2099-01-10" })).status).toBe(403);
     expect((await ped(`/cards/${card.id}/no-slot`, "POST", { nextPossibleOn: "2000-01-10" })).status).toBe(400);
@@ -204,7 +252,7 @@ describe("entrada do aluno", () => {
 describe("área que matricula é da escola (D16)", () => {
   it("o admin troca para o comercial, e o comercial passa a matricular", async () => {
     const { card } = await newEntry("Lead D16", "321654980");
-    await body(await move(ped, card.id, "a_marcar"));
+    await closeAndPay(card.id);
     await body(await patch(ped, card.id, { levelingStartsAt: levelingAt.replace("T14", "T15"), evaluatorPersonId: avaliador }));
     await body(await move(ped, card.id, "marcado"));
     await body(await move(com, card.id, "comunicada"));
@@ -222,8 +270,11 @@ describe("área que matricula é da escola (D16)", () => {
     // o administrativo não tem mais etapa nenhuma na entrada: o fluxo some para ele
     expect((await adm("/flows/entrada/cards")).status).toBe(403);
     await body(await patch(com, card.id, { regime: "open_entry" }));
-    const { card: matriculado } = await body<{ card: Card }>(await move(com, card.id, "matricula"));
-    expect(matriculado.data.enrollmentId).toBeTruthy();
+    await body(await move(com, card.id, "matricula"));
+    const { enrollments } = await body<{ enrollments: { regime: string; moduleId: string; levelPending: boolean }[] }>(
+      await admin.json(`/enrollments?studentId=${card.data.studentId ?? (await body<{ card: Card }>(await admin.json(`/cards/${card.id}`))).card.data.studentId}`),
+    );
+    expect(enrollments).toEqual([expect.objectContaining({ regime: "open_entry", moduleId: n1, levelPending: false })]);
 
     await body(await admin.json("/settings/flows", "PATCH", { entryEnrollmentArea: "adm" }));
   });

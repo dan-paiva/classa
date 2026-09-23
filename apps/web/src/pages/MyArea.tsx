@@ -90,7 +90,9 @@ export function MyArea() {
                 {e.courseName}
               </strong>
               <span className="small muted">
-                {e.className ?? (
+                {e.levelPending ? (
+                  <Badge tone="warn">Aguardando nivelamento</Badge>
+                ) : e.className ?? (
                   <>
                     <Badge tone="info">Open-entry</Badge> {e.moduleName ?? "sem nível"}
                   </>

@@ -614,6 +614,11 @@ export const enrollment = pgTable(
     moduleId: uuid("module_id").references(() => courseModule.id),
     modality: text("modality", { enum: MODALITIES }).notNull(),
     packageLessons: integer("package_lessons").notNull(),
+    /**
+     * Paga antes do nivelamento (DOMINIO.md §7.5.1): tem contrato e pacote, mas
+     * ainda não tem turma nem nível. Completar a matrícula desliga a marca.
+     */
+    levelPending: boolean("level_pending").notNull().default(false),
     startsOn: date("starts_on").notNull(),
     endsOn: date("ends_on").notNull(),
     endedAt: tstz("ended_at"),
@@ -623,9 +628,10 @@ export const enrollment = pgTable(
   (t) => [
     check("enrollment_package_positive", sql`${t.packageLessons} > 0`),
     // open-entry não tem turma; os outros regimes têm. O nível é obrigatório no open-entry.
+    // Aguardando nivelamento não tem nem turma nem nível.
     check(
       "enrollment_regime_shape",
-      sql`(${t.regime} = 'open_entry' and ${t.classGroupId} is null and ${t.moduleId} is not null) or (${t.regime} <> 'open_entry' and ${t.classGroupId} is not null)`,
+      sql`(${t.levelPending} and ${t.classGroupId} is null and ${t.moduleId} is null) or (not ${t.levelPending} and ((${t.regime} = 'open_entry' and ${t.classGroupId} is null and ${t.moduleId} is not null) or (${t.regime} <> 'open_entry' and ${t.classGroupId} is not null)))`,
     ),
     check("enrollment_period", sql`${t.endsOn} >= ${t.startsOn}`),
     index("enrollment_student_idx").on(t.studentId),

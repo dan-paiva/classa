@@ -118,7 +118,7 @@ function LeadCard({ slug, lead: l, canAdvance, act, busy }: { slug: string; lead
       ) : (
         canStartEntry && (
           <Link to="/e/$slug/acoes" params={{ slug }} search={{ fluxo: "entrada", lead: l.id }} className="small">
-            Iniciar entrada (nivelamento e matrícula)
+            Iniciar entrada (fechamento, pagamento, nivelamento e matrícula)
           </Link>
         )
       )}

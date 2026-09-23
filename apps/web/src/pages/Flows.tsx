@@ -296,7 +296,11 @@ function FlowBoard({ slug, def, initialLeadId, initialCardId }: { slug: string; 
                     <strong>{c.title}</strong>
                     <span className="muted small">desde {fmtDate(c.stageChangedAt)}</span>
                     {c.canOperate === false && !stage.final && <span className="muted small">acompanhando · está com {AREA_LABELS[areaOf(stage.key)]}</span>}
-                    {typeof c.data.noShows === "number" && c.data.noShows > 0 && <Badge tone="warn">{`${c.data.noShows} falta(s) no nivelamento`}</Badge>}
+                    {c.data.unresponsive === true ? (
+                      <Badge tone="danger">Sem resposta · CX precisa procurar</Badge>
+                    ) : (
+                      typeof c.data.noShows === "number" && c.data.noShows > 0 && <Badge tone="warn">{`${c.data.noShows} falta(s) no nivelamento`}</Badge>
+                    )}
                     {typeof c.data.nextPossibleOn === "string" && c.stage === "a_marcar" && <Badge tone="info">{`sem vaga · próxima ${fmtIsoDate(c.data.nextPossibleOn)}`}</Badge>}
                     {typeof c.data.overdueCents === "number" && <Badge tone="danger">{money(c.data.overdueCents)}</Badge>}
                   </button>
@@ -415,7 +419,7 @@ function CardPanel({ slug, def, cardId, onChange, onClose }: { slug: string; def
         <Badge tone={current.final ? (current.alternative ? "muted" : "ok") : "info"}>{current.label}</Badge> <span className="muted small">{current.description}</span>
       </p>
       {!current.final && !canOperate && (
-        <p className="muted small">Você acompanha este card porque ele passou pela sua área. Agora quem move é {AREA_LABELS[areaOf(card.stage)]}.</p>
+        <p className="muted small">Você acompanha este card, mas quem move agora é {AREA_LABELS[areaOf(card.stage)]}.</p>
       )}
       {def.key === "entrada" && typeof card.data.eventId === "string" && (
         <p className="small">

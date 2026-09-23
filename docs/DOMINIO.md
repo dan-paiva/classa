@@ -504,25 +504,29 @@ Motor comum:
 | Entrada do aluno | atravessa Comercial, Pedagógico e Administrativo | detalhe em 7.5.1 |
 
 #### 7.5.1 Entrada do aluno
-É o fluxo que atravessa mais áreas, e o que justificou a área por etapa. Do primeiro contato à matrícula:
+É o fluxo que atravessa mais áreas, e o que justificou a área por etapa. Do primeiro contato à matrícula completa. **O aluno fecha e paga antes do nivelamento** (decidido em 23/09/2026): o nivelamento só define a turma ou o nível de quem já é aluno.
 
 | # | Etapa | Área | Exige para entrar | Efeito ao entrar |
 | --- | --- | --- | --- | --- |
 | 1 | Dados | Comercial | CPF, e-mail, curso de interesse, disponibilidade, pacote pretendido | grava na pessoa (3.1); o CPF reconcilia se ela já existir |
-| 2 | Nivelamento a marcar | Pedagógico | — | o card entra no quadro do pedagógico com a disponibilidade declarada |
-| 3 | Nivelamento marcado | Pedagógico | data, hora, avaliador | **cria o nivelamento na agenda** (5.8), com o lead como avaliado |
-| 4 | Data comunicada | Comercial | — | registra que o comercial avisou o lead |
-| 5 | Nivelado | Pedagógico | módulo sugerido | grava o resultado no nivelamento |
-| 6 | Matrícula | Administrativo (**decisão D16**) | regime, pacote, e turma se for regular | **converte o lead em aluno** (6.5) e abre a matrícula no regime escolhido |
-| 7 | Concluída | — | — | final |
+| 2 | Fechado | Comercial | — | **converte o lead em aluno** (6.5), abre a matrícula **aguardando nivelamento** (sem turma nem nível) e emite o contrato com as parcelas |
+| 3 | Pagamento confirmado | Financeiro | primeira parcela paga (aluno de empresa B2B, sem parcela, passa direto) | o card segue para o pedagógico |
+| 4 | Nivelamento a marcar | Pedagógico | — | o card entra no quadro do pedagógico com a disponibilidade declarada |
+| 5 | Nivelamento marcado | Pedagógico | data, hora, avaliador | **cria o nivelamento na agenda** (5.8), com o aluno como avaliado |
+| 6 | Data comunicada | Comercial | — | registra que o comercial avisou o aluno |
+| 7 | Nivelado | Pedagógico | módulo sugerido | grava o resultado no nivelamento |
+| 8 | Matrícula completa | Administrativo (**decisão D16**) | regime, e turma se for regular | a **mesma** matrícula ganha turma (regular) ou nível (open-entry) e o aluno entra nas aulas; o lead fica como matriculado |
+| 9 | Concluída | a mesma da etapa 8 | — | final |
+
+Matrícula aguardando nivelamento tem pacote, créditos e contrato, mas não entra em aula nenhuma nem reserva vaga open-entry: não há turma nem nível para isso.
 
 Saídas alternativas — é aqui que o fluxo real costuma vazar:
 
-- **Perdido** (Comercial, exige motivo): a qualquer momento. A pessoa fica; o lead sai do funil.
-- **Não compareceu** (Pedagógico): marca o nivelamento como não comparecido, devolve o card para a etapa 2 e conta a falta. Os efeitos da etapa 3 em diante voltam a rodar quando o card for remarcado, com o nivelamento novo. Na terceira, vai para *Perdido* com motivo "sem resposta" (**decisão D17**).
-- **Sem vaga na semana pedida** (Pedagógico): o card fica na etapa 2 com a próxima data possível anotada e registrada no histórico, e o comercial vê para renegociar.
+- **Perdido** (Comercial, exige motivo): só **antes de fechar**. A pessoa fica; o lead sai do funil. Depois de fechado, a pessoa é aluno com contrato, e desistir é pelo fluxo de **Cancelamento e retenção** (7.5).
+- **Não compareceu** (Pedagógico): marca o nivelamento como não comparecido, devolve o card para a etapa 4 e conta a falta. Os efeitos da etapa 5 em diante voltam a rodar quando o card for remarcado, com o nivelamento novo. Na terceira falta o card fica marcado **sem resposta** e passa a aparecer também para o **CX**, só para leitura, para procurar o aluno (**decisão D17**). A marca sai quando o nivelamento é remarcado. Não vai para Perdido, porque o aluno já pagou.
+- **Sem vaga na semana pedida** (Pedagógico): o card fica na etapa 4 com a próxima data possível anotada e registrada no histórico, e o comercial vê para renegociar.
 
-Uma regra vale para o fluxo inteiro: **o nivelamento pode ser agendado para quem ainda é lead**. É a única exceção de 5.8, e é o que permite nivelar antes de matricular.
+Uma regra vale para o fluxo inteiro: **o nivelamento pode ser agendado para quem ainda é lead** (5.8). Na entrada ele já é aluno quando nivela, mas o nivelamento avulso, marcado pela agenda, continua aceitando lead.
 
 ### 7.6 Alertas
 | Alerta | Condição |
@@ -624,7 +628,7 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 | D14 | Trocar de nível cancela reserva futura no módulo antigo? | Não; mantém e avisa o aluno |
 | D15 | Créditos somam entre matrículas do mesmo aluno? | Não; saldo é por matrícula |
 | D16 | Que área matricula no fim do fluxo de entrada? | Administrativo, configurável por escola em Configurações → Fluxos (fica com as etapas Matrícula e Concluída) |
-| D17 | Quantas faltas no nivelamento até perder o lead? | Três; depois vai a `perdido` com motivo "sem resposta" |
+| D17 | Quantas faltas no nivelamento até o card ficar "sem resposta"? | Três. Como o aluno já pagou (7.5.1), ele não vira Perdido: o CX procura |
 
 ## Ordem de construção
 

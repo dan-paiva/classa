@@ -92,6 +92,13 @@
       "when": 1790184000000,
       "tag": "0012_agenda_eventos",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790270400000,
+      "tag": "0013_matricula_aguardando_nivel",
+      "breakpoints": true
     }
   ]
 }

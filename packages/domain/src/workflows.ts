@@ -31,13 +31,15 @@ export const FLOWS: Record<FlowKey, FlowDefinition> = {
     area: "Comercial, Pedagógico e Administrativo",
     stages: [
       { key: "dados", label: "Dados", description: "O comercial colhe CPF, e-mail, curso, disponibilidade e pacote.", area: "com", requires: ["cpf", "email", "courseId", "availability", "packageLessons"] },
+      { key: "fechado", label: "Fechado", description: "O lead aceitou: vira aluno, a matrícula abre aguardando nivelamento e o contrato sai com as parcelas.", area: "com" },
+      { key: "pago", label: "Pagamento confirmado", description: "A primeira parcela está paga. O card segue para o pedagógico.", area: "fin" },
       { key: "a_marcar", label: "Nivelamento a marcar", description: "O pedagógico acha data e avaliador dentro da disponibilidade declarada.", area: "ped" },
-      { key: "marcado", label: "Nivelamento marcado", description: "O nivelamento entra na agenda, com o lead como avaliado.", area: "ped", requires: ["levelingStartsAt", "evaluatorPersonId"] },
-      { key: "comunicada", label: "Data comunicada", description: "O comercial avisou o lead da data.", area: "com" },
+      { key: "marcado", label: "Nivelamento marcado", description: "O nivelamento entra na agenda, com o aluno como avaliado.", area: "ped", requires: ["levelingStartsAt", "evaluatorPersonId"] },
+      { key: "comunicada", label: "Data comunicada", description: "O comercial avisou o aluno da data.", area: "com" },
       { key: "nivelado", label: "Nivelado", description: "O resultado vai para o nivelamento.", area: "ped", requires: ["suggestedModuleId"] },
-      { key: "matricula", label: "Matrícula", description: "O lead vira aluno e a matrícula abre no regime escolhido.", area: "adm", requires: ["regime", "packageLessons"] },
-      { key: "concluida", label: "Concluída", description: "Aluno matriculado.", area: "adm", final: true },
-      { key: "perdido", label: "Perdido", description: "O lead sai do funil; a pessoa fica.", area: "com", requires: ["lostReason"], final: true, alternative: true },
+      { key: "matricula", label: "Matrícula completa", description: "A matrícula ganha turma ou nível e o aluno entra nas aulas.", area: "adm", requires: ["regime"] },
+      { key: "concluida", label: "Concluída", description: "Aluno com turma ou nível.", area: "adm", final: true },
+      { key: "perdido", label: "Perdido", description: "Desistiu antes de fechar: o lead sai do funil; a pessoa fica.", area: "com", requires: ["lostReason"], final: true, alternative: true },
     ],
     fields: [
       { key: "leadId", label: "Lead", kind: "select", required: true },
@@ -46,6 +48,7 @@ export const FLOWS: Record<FlowKey, FlowDefinition> = {
       { key: "courseId", label: "Curso de interesse", kind: "select" },
       { key: "availability", label: "Disponibilidade", kind: "text", hint: "Ex.: seg e qua depois das 18h" },
       { key: "packageLessons", label: "Aulas no pacote", kind: "number" },
+      { key: "installments", label: "Parcelas", kind: "number", hint: "Vazio: o padrão da escola" },
       { key: "nextPossibleOn", label: "Próxima data possível", kind: "date", hint: "Sem vaga na semana pedida: anote quando dá" },
       { key: "levelingStartsAt", label: "Data e hora do nivelamento", kind: "datetime" },
       { key: "evaluatorPersonId", label: "Avaliador", kind: "select" },
@@ -285,7 +288,10 @@ export function nextStage(def: FlowDefinition, stageKey: string): Stage | null {
   return def.stages.slice(i + 1).find((s) => !s.alternative) ?? null;
 }
 
-/** Faltas no nivelamento até o lead ir a Perdido com "Sem resposta" (decisão D17). */
+/**
+ * Faltas no nivelamento até o card ficar marcado "sem resposta" (decisão D17).
+ * Como o aluno já pagou, ele não vira Perdido: o CX é quem procura.
+ */
 export const ENTRY_MAX_NO_SHOWS = 3;
 
 export function checkRequires(stage: Stage, data: Record<string, unknown>, def: FlowDefinition): string | null {
