@@ -173,6 +173,16 @@ Só em cursos `grupo` e `turmas_dedicadas`. Tem ordem, nome e cor. O **módulo i
 - A aula recebe o conteúdo *i* da sequência na *i*-ésima aula do módulo ou turma e **grava qual recebeu**.
 - Cada módulo aceita um único currículo de produto.
 
+### 4.5 Material do aluno
+É o que o aluno recebe para estudar: um **link** (drive, plataforma, PDF) ligado a um curso e, se quiser, a um nível. É diferente do currículo (4.4), que diz o conteúdo de cada aula.
+
+- Campos: curso, nível (vazio = vale para o curso todo), título, link, observação para o aluno.
+- **Quem cuida:** o Acadêmico cadastra, edita e inativa (Editor ou acima). Pedagógico, CX, Comercial e Administrativo consultam.
+- **Entrega:** no pós-venda da entrada do aluno (7.5.1), o CX envia. Vão o material ativo do curso todo e o do nível da matrícula. Entregar de novo não duplica.
+- Inativar tira o material das próximas entregas; quem já recebeu continua vendo.
+- O aluno vê na área dele tudo o que recebeu, nas matrículas ativas.
+- Fica de fora por ora: reenviar o material do nível novo quando o aluno muda de nível (7.5, Mudança de nível).
+
 ## 5. Agenda
 
 ### 5.1 Turma / oferta
@@ -504,7 +514,7 @@ Motor comum:
 | Entrada do aluno | atravessa Comercial, Pedagógico e Administrativo | detalhe em 7.5.1 |
 
 #### 7.5.1 Entrada do aluno
-É o fluxo que atravessa mais áreas, e o que justificou a área por etapa. Do primeiro contato à matrícula completa. **O aluno fecha e paga antes do nivelamento** (decidido em 23/09/2026): o nivelamento só define a turma ou o nível de quem já é aluno.
+É o fluxo que atravessa mais áreas, e o que justificou a área por etapa. Do primeiro contato às boas-vindas. **O aluno fecha e paga antes do nivelamento** (decidido em 23/09/2026): o nivelamento só define a turma ou o nível de quem já é aluno.
 
 | # | Etapa | Área | Exige para entrar | Efeito ao entrar |
 | --- | --- | --- | --- | --- |
@@ -516,7 +526,9 @@ Motor comum:
 | 6 | Data comunicada | Comercial | — | registra que o comercial avisou o aluno |
 | 7 | Nivelado | Pedagógico | módulo sugerido | grava o resultado no nivelamento |
 | 8 | Matrícula completa | Administrativo (**decisão D16**) | regime, e turma se for regular | a **mesma** matrícula ganha turma (regular) ou nível (open-entry) e o aluno entra nas aulas; o lead fica como matriculado |
-| 9 | Concluída | a mesma da etapa 8 | — | final |
+| 9 | Boas-vindas | CX | — | o CX recebe o aluno: escola, agenda e como falar com o suporte |
+| 10 | Material enviado | CX | material cadastrado para o curso e o nível (4.5) | **entrega o material** do curso todo e do nível da matrícula, que aparece na área do aluno |
+| 11 | Concluída | CX | — | final |
 
 Matrícula aguardando nivelamento tem pacote, créditos e contrato, mas não entra em aula nenhuma nem reserva vaga open-entry: não há turma nem nível para isso.
 
@@ -627,7 +639,7 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 | D13 | Antecedência mínima para reservar aula open-entry | A mesma janela de cancelamento do curso |
 | D14 | Trocar de nível cancela reserva futura no módulo antigo? | Não; mantém e avisa o aluno |
 | D15 | Créditos somam entre matrículas do mesmo aluno? | Não; saldo é por matrícula |
-| D16 | Que área matricula no fim do fluxo de entrada? | Administrativo, configurável por escola em Configurações → Fluxos (fica com as etapas Matrícula e Concluída) |
+| D16 | Que área matricula no fim do fluxo de entrada? | Administrativo, configurável por escola em Configurações → Fluxos (fica com a etapa Matrícula completa) |
 | D17 | Quantas faltas no nivelamento até o card ficar "sem resposta"? | Três. Como o aluno já pagou (7.5.1), ele não vira Perdido: o CX procura |
 
 ## Ordem de construção
@@ -645,3 +657,4 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 11. **Identidade:** e-mail da pessoa em tabela própria, deduplicação por CPF, pessoa criada já na captação do lead, colaborador-aluno com dois vínculos. **Vem antes das duas seguintes**: as duas mexem em matrícula, e matrícula aponta para pessoa. ✔
 12. **Open-entry:** regime na turma e na matrícula, matrícula sem turma, reserva por aula com trava de nível, de vaga e de choque. ✔
 13. **Agenda geral e fluxo de entrada:** eventos, reuniões e nivelamento; leitura unificada da agenda; área por etapa no motor de fluxos; fluxo de entrada do aluno. ✔
+14. **Pós-venda e material do aluno:** cadastro de material por curso e nível (Acadêmico), etapas de boas-vindas e envio de material (CX) no fim da entrada, material na área do aluno. ✔

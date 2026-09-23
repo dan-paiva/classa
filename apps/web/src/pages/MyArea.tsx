@@ -35,6 +35,25 @@ export function MyArea() {
       </div>
 
       <LevelingsPanel slug={slug} />
+      {q.data.materials.length > 0 && (
+        <section className="panel stack">
+          <h2>Meus materiais</h2>
+          <ul className="plain">
+            {q.data.materials.map((m) => (
+              <li key={m.id}>
+                <a href={m.url} target="_blank" rel="noreferrer">
+                  {m.title}
+                </a>{" "}
+                <span className="muted small">
+                  · {m.courseName}
+                  {m.moduleName ? ` · ${m.moduleName}` : ""}
+                </span>
+                {m.notes && <div className="muted small">{m.notes}</div>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <OpenSlotsPanel slug={slug} />
 
       <div className="grid-2">

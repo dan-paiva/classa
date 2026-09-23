@@ -483,7 +483,22 @@ export type MyArea = {
   enrollments: Omit<Enrollment, "studentStatus">[];
   installments: Installment[];
   lessons: { id: string; startsAt: string; endsAt: string; state: LessonState; className: string; courseName: string; courseColor: string; teacherName: string | null; roomName: string | null; roomLink: string | null; enrollmentId?: string; myStatus?: AttendanceStatus; cancelledInTime?: boolean | null }[];
+  materials: { id: string; title: string; url: string; notes: string | null; courseName: string; moduleName: string | null; deliveredAt: string }[];
 };
+
+/** Material do aluno (DOMINIO.md §4.5): link por curso e, opcionalmente, por nível. */
+export type Material = {
+  id: string;
+  courseId: string;
+  moduleId: string | null;
+  title: string;
+  url: string;
+  notes: string | null;
+  deactivatedAt: string | null;
+  courseName: string;
+  moduleName: string | null;
+};
+export type MaterialInput = { courseId: string; moduleId?: string | null; title: string; url: string; notes?: string | null };
 
 export type Alert = { key: string; tone: "danger" | "warn" | "info"; title: string; detail: string; count: number; resource: string };
 
@@ -677,6 +692,10 @@ export const school = {
   updateMember: (slug: string, id: string, input: { profileType: string; level: number; areas: Record<string, string> }) => request(`${t(slug)}/users/${id}`, patch(input)),
   setMemberBlocked: (slug: string, id: string, blocked: boolean) => request(`${t(slug)}/users/${id}/${blocked ? "block" : "unblock"}`, post()),
   myArea: (slug: string) => request<MyArea>(`${t(slug)}/minha-area`),
+  materials: (slug: string) => request<{ materials: Material[] }>(`${t(slug)}/materials`),
+  createMaterial: (slug: string, input: MaterialInput) => request<{ material: Material }>(`${t(slug)}/materials`, post(input)),
+  updateMaterial: (slug: string, id: string, input: MaterialInput) => request<{ material: Material }>(`${t(slug)}/materials/${id}`, patch(input)),
+  setMaterialActive: (slug: string, id: string, active: boolean) => request(`${t(slug)}/materials/${id}/${active ? "reactivate" : "deactivate"}`, post()),
   myLesson: (slug: string, lessonId: string, action: "cancelar" | "reagendar") => request(`${t(slug)}/minha-area/aulas/${lessonId}/${action}`, post()),
 
   /** Vagas abertas do próprio aluno, agrupadas por matrícula open-entry. */

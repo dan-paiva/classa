@@ -27,8 +27,8 @@ export const FLOWS: Record<FlowKey, FlowDefinition> = {
     key: "entrada",
     title: "Entrada do aluno",
     singular: "entrada",
-    description: "Do primeiro contato à matrícula, passando pelo nivelamento. Atravessa Comercial, Pedagógico e Administrativo.",
-    area: "Comercial, Pedagógico e Administrativo",
+    description: "Do primeiro contato às boas-vindas: fechamento, pagamento, nivelamento, matrícula e material.",
+    area: "Comercial, Financeiro, Pedagógico, Administrativo e CX",
     stages: [
       { key: "dados", label: "Dados", description: "O comercial colhe CPF, e-mail, curso, disponibilidade e pacote.", area: "com", requires: ["cpf", "email", "courseId", "availability", "packageLessons"] },
       { key: "fechado", label: "Fechado", description: "O lead aceitou: vira aluno, a matrícula abre aguardando nivelamento e o contrato sai com as parcelas.", area: "com" },
@@ -38,7 +38,9 @@ export const FLOWS: Record<FlowKey, FlowDefinition> = {
       { key: "comunicada", label: "Data comunicada", description: "O comercial avisou o aluno da data.", area: "com" },
       { key: "nivelado", label: "Nivelado", description: "O resultado vai para o nivelamento.", area: "ped", requires: ["suggestedModuleId"] },
       { key: "matricula", label: "Matrícula completa", description: "A matrícula ganha turma ou nível e o aluno entra nas aulas.", area: "adm", requires: ["regime"] },
-      { key: "concluida", label: "Concluída", description: "Aluno com turma ou nível.", area: "adm", final: true },
+      { key: "boas_vindas", label: "Boas-vindas", description: "O CX recebe o aluno: apresenta a escola, a agenda e como falar com o suporte.", area: "cx" },
+      { key: "material", label: "Material enviado", description: "O material do curso e do nível vai para o aluno e aparece na área dele.", area: "cx" },
+      { key: "concluida", label: "Concluída", description: "Aluno recebido, com turma ou nível e material.", area: "cx", final: true },
       { key: "perdido", label: "Perdido", description: "Desistiu antes de fechar: o lead sai do funil; a pessoa fica.", area: "com", requires: ["lostReason"], final: true, alternative: true },
     ],
     fields: [
@@ -270,15 +272,12 @@ export function flowAreas(def: FlowDefinition, overrides?: StageAreaOverrides): 
   return [...new Set(def.stages.map((s) => stageArea(def, s.key, overrides)))];
 }
 
-/**
- * Decisão D16: que área matricula no fim da entrada, configurável por escola.
- * Ela fica com a etapa Matrícula e com a Concluída, que é quem fecha o card.
- */
+/** Decisão D16: que área completa a matrícula na entrada, configurável por escola. */
 export const DEFAULT_ENTRY_ENROLLMENT_AREA: Area = "adm";
 export function stageOverrides(flow: string, settings: { flows?: { entryEnrollmentArea?: Area } } | null | undefined): StageAreaOverrides | undefined {
   if (flow !== "entrada") return undefined;
   const area = settings?.flows?.entryEnrollmentArea ?? DEFAULT_ENTRY_ENROLLMENT_AREA;
-  return { matricula: area, concluida: area };
+  return { matricula: area };
 }
 
 /** Próxima etapa do caminho principal (sem as alternativas), ou null na última. */

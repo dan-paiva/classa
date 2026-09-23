@@ -42,6 +42,7 @@ export const RESOURCES = [
   "agenda",
   "eventos",
   "cursos",
+  "materiais",
   "turmas",
   "alunos",
   "professores",
@@ -69,6 +70,8 @@ export const RESOURCE_AREAS: Record<Resource, readonly Area[]> = {
   // reunião, evento e nivelamento: qualquer área cria (DOMINIO.md §5.8)
   eventos: AREAS,
   cursos: ["ped", "aca", "com", "cx", "mkt", "adm"],
+  // o acadêmico cuida; o CX entrega; pedagógico e comercial consultam
+  materiais: ["aca", "ped", "cx", "com", "adm"],
   turmas: ["ped", "aca", "adm", "com", "cx"],
   alunos: ["aca", "adm", "com", "cx", "fin", "mkt"],
   professores: ["ped", "aca", "adm", "fin"],
@@ -94,6 +97,7 @@ export const RESOURCE_ACT_AREAS: Partial<Record<Resource, readonly Area[]>> = {
   relatorios: [], // relatório é só leitura
   agenda: ["ped", "aca"],
   cursos: ["ped", "aca"],
+  materiais: ["aca"],
   turmas: ["ped", "aca"],
   alunos: ["aca", "com", "cx", "adm"],
   professores: ["ped", "adm"],

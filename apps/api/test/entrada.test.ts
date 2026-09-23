@@ -37,6 +37,7 @@ let com: ReturnType<typeof as>;
 let ped: ReturnType<typeof as>;
 let adm: ReturnType<typeof as>;
 let cx: ReturnType<typeof as>;
+let aca: ReturnType<typeof as>;
 let courseId = "";
 let n1 = "";
 let n2 = "";
@@ -71,12 +72,14 @@ beforeAll(async () => {
     )
   ).classGroup.id;
 
-  const invite = async (email: string, area: string) =>
-    joinByInvite((await body<{ link: string }>(await admin.json("/invitations", "POST", { email, profileType: "colaborador", level: 4, areas: { [area]: "total" } }))).link, email);
+  const invite = async (email: string, area: string, level = 4) =>
+    joinByInvite((await body<{ link: string }>(await admin.json("/invitations", "POST", { email, profileType: "colaborador", level, areas: { [area]: "total" } }))).link, email);
   com = as(await invite("com@entrada.classa.dev", "com"));
   ped = as(await invite("ped@entrada.classa.dev", "ped"));
   adm = as(await invite("adm@entrada.classa.dev", "adm"));
   cx = as(await invite("cx@entrada.classa.dev", "cx"));
+  // cadastrar material é editar: vai até o nível Editor
+  aca = as(await invite("aca@entrada.classa.dev", "aca", 3));
 });
 
 const board = async (who: ReturnType<typeof as>) => (await body<{ cards: Card[] }>(await who("/flows/entrada/cards"))).cards;
@@ -155,7 +158,27 @@ describe("entrada do aluno", () => {
     expect((await move(adm, card.id, "matricula")).status).toBe(422); // falta regime
     await body(await patch(adm, card.id, { regime: "regular", classGroupId: turmaN2 }));
     await body(await move(adm, card.id, "matricula"));
-    await body(await move(adm, card.id, "concluida"));
+
+    // pós-venda: o CX puxa as boas-vindas e manda o material
+    expect((await board(cx)).find((c) => c.id === card.id)?.canOperate).toBe(true);
+    await body(await move(cx, card.id, "boas_vindas"));
+    const semMaterial = await move(cx, card.id, "material");
+    expect(semMaterial.status).toBe(422);
+    expect(await semMaterial.json()).toMatchObject({ message: expect.stringContaining("Materiais") });
+    // o acadêmico cadastra; o CX não
+    expect((await cx("/materials", "POST", { courseId, title: "X", url: "https://exemplo.dev/x" })).status).toBe(403);
+    await body(await aca("/materials", "POST", { courseId, title: "Guia do curso", url: "https://exemplo.dev/guia" }));
+    await body(await aca("/materials", "POST", { courseId, moduleId: n2, title: "Livro do Nível 2", url: "https://exemplo.dev/n2" }));
+    await body(await aca("/materials", "POST", { courseId, moduleId: n1, title: "Livro do Nível 1", url: "https://exemplo.dev/n1" }));
+    const enviado = (await body<{ card: Card }>(await move(cx, card.id, "material"))).card;
+    expect(enviado.stage).toBe("material");
+    await body(await move(cx, card.id, "concluida"));
+
+    // o aluno vê o material do curso e o do nível dele, e não o de outro nível
+    const { link } = await body<{ link: string }>(await admin.json("/invitations", "POST", { personId: lead.personId, profileType: "aluno", email: "joana.aluna@exemplo.dev" }));
+    const aluno = as(await joinByInvite(link, "joana.aluna@exemplo.dev"));
+    const area = await body<{ materials: { title: string; url: string }[] }>(await aluno("/minha-area"));
+    expect(area.materials.map((m) => m.title).sort()).toEqual(["Guia do curso", "Livro do Nível 2"]);
 
     const leads = await body<{ leads: { id: string; stage: string; studentId: string | null }[] }>(await admin.json("/leads"));
     expect(leads.leads.find((l) => l.id === lead.id)).toMatchObject({ stage: "matriculado", studentId });
@@ -265,7 +288,7 @@ describe("área que matricula é da escola (D16)", () => {
     expect((await com("/settings/flows", "PATCH", { entryEnrollmentArea: "com" })).status).toBe(403); // só o admin configura
     await body(await admin.json("/settings/flows", "PATCH", { entryEnrollmentArea: "com" }));
     const { stageAreas } = await body<{ stageAreas: Record<string, Record<string, string>> }>(await admin.json("/flows"));
-    expect(stageAreas.entrada).toMatchObject({ matricula: "com", concluida: "com", dados: "com", marcado: "ped" });
+    expect(stageAreas.entrada).toMatchObject({ matricula: "com", concluida: "cx", dados: "com", marcado: "ped" });
 
     // o administrativo não tem mais etapa nenhuma na entrada: o fluxo some para ele
     expect((await adm("/flows/entrada/cards")).status).toBe(403);

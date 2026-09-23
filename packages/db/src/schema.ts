@@ -921,6 +921,53 @@ export const companyCharge = pgTable(
 );
 
 /* ---------------------------------------------------------------------------
+ * Material pedagógico (DOMINIO.md §4.5): cadastrado pelo Acadêmico, entregue
+ * pelo CX no pós-venda da entrada do aluno (§7.5.1).
+ * ------------------------------------------------------------------------- */
+
+export const courseMaterial = pgTable(
+  "course_material",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => course.id),
+    /** Vazio: vale para o curso todo, qualquer nível. */
+    moduleId: uuid("module_id").references(() => courseModule.id),
+    title: text("title").notNull(),
+    /** Link do material (drive, plataforma, PDF). */
+    url: text("url").notNull(),
+    notes: text("notes"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deactivatedAt: tstz("deactivated_at"),
+  },
+  (t) => [index("course_material_course_idx").on(t.tenantId, t.courseId)],
+);
+
+/** O que cada matrícula recebeu, e quando: é o que aparece na área do aluno. */
+export const materialDelivery = pgTable(
+  "material_delivery",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    enrollmentId: uuid("enrollment_id")
+      .notNull()
+      .references(() => enrollment.id),
+    materialId: uuid("material_id")
+      .notNull()
+      .references(() => courseMaterial.id),
+    deliveredAt: tstz("delivered_at").notNull().defaultNow(),
+    deliveredBy: text("delivered_by"),
+  },
+  (t) => [primaryKey({ columns: [t.enrollmentId, t.materialId] })],
+);
+
+/* ---------------------------------------------------------------------------
  * Eventos, reuniões e nivelamentos (DOMINIO.md §5.8). Ficam fora de `lesson`
  * porque não têm folha, crédito nem presença; a agenda geral lê as duas.
  * ------------------------------------------------------------------------- */

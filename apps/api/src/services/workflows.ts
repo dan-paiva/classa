@@ -42,6 +42,7 @@ import { issueContractTx, listInstallments, registerPayment } from "./finance.ts
 import { changeLessonTeacher } from "./lessons.ts";
 import { createStudent, createTeacher, findOrCreatePerson, primaryEmailSql, setStudentStatus, updatePerson } from "./people.ts";
 import { completeEnrollmentLevel, createEnrollment, transferEnrollment } from "./enrollments.ts";
+import { deliverMaterials } from "./materials.ts";
 import { agendaPeople, createEvent, lessonClashes, markNoShow, recordLevelingResult } from "./agenda.ts";
 
 const today = (ctx: ServiceContext) => dateInZone(ctx.now, ctx.timezone);
@@ -302,6 +303,12 @@ const ENTRY_EFFECTS: Record<string, Effect> = {
     });
     await ctx.db.update(lead).set({ stage: "matriculado", stageChangedAt: ctx.now }).where(eq(lead.id, str(d.leadId)));
     return { note: "Matrícula completa: o aluno entrou nas aulas." };
+  },
+  // pós-venda: o CX manda o material do curso e do nível, que fica na área do aluno
+  material: async (ctx, d) => {
+    if (!str(d.enrollmentId)) throw unprocessable("O card não tem matrícula aberta.");
+    const sent = await deliverMaterials(ctx, str(d.enrollmentId));
+    return { note: `Material enviado: ${sent.map((m) => m.title).join(", ")}.` };
   },
   perdido: async (ctx, d) => {
     // depois de fechar, a pessoa é aluno com contrato: sair é cancelar, com retenção

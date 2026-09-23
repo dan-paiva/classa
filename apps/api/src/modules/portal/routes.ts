@@ -9,6 +9,7 @@ import { availableCredits, listOpenSlots, reserveLesson } from "../../services/o
 import { listInstallments } from "../../services/finance.ts";
 import { cancelStudentLesson } from "../../services/lessons.ts";
 import { listLessons } from "../../services/schedule.ts";
+import { studentMaterials } from "../../services/materials.ts";
 import { primaryEmailSql } from "../../services/people.ts";
 
 /**
@@ -45,6 +46,8 @@ export const portalRoutes = new Hono<AppEnv>()
       student: s,
       enrollments: enrollments.map(({ studentStatus: _s, ...e }) => e),
       installments,
+      // o que o CX entregou no pós-venda (DOMINIO.md §4.5)
+      materials: await studentMaterials(ctx, studentId),
       lessons: lessons.map((l) => ({
         id: l.id,
         startsAt: l.startsAt,
