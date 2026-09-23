@@ -5,11 +5,13 @@ import type { Auth } from "./auth.ts";
 import { DomainError } from "./http/errors.ts";
 import { requireTenant } from "./http/require-tenant.ts";
 import { pgErrorCode } from "./http/pg-errors.ts";
+import { agendaRoutes } from "./modules/agenda/routes.ts";
 import { auditRoutes } from "./modules/audit/routes.ts";
 import { reportRoutes } from "./modules/reports/routes.ts";
 import { companyRoutes } from "./modules/companies/routes.ts";
 import { courseRoutes } from "./modules/courses/routes.ts";
 import { financeRoutes } from "./modules/finance/routes.ts";
+import { materialRoutes } from "./modules/materials/routes.ts";
 import { payrollRoutes } from "./modules/payroll/routes.ts";
 import { peopleRoutes } from "./modules/people/routes.ts";
 import { portalRoutes } from "./modules/portal/routes.ts";
@@ -95,8 +97,10 @@ export function createApp(resolve: (env: unknown) => Services) {
     .route("/", tenantRoutes)
     .route("/", invitationRoutes)
     .route("/t/:slug", courseRoutes)
+    .route("/t/:slug", materialRoutes)
     .route("/t/:slug", peopleRoutes)
     .route("/t/:slug", scheduleRoutes)
+    .route("/t/:slug", agendaRoutes)
     .route("/t/:slug", financeRoutes)
     .route("/t/:slug", payrollRoutes)
     .route("/t/:slug", companyRoutes)

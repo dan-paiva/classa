@@ -17,6 +17,8 @@ const ENTITY: Record<string, string> = {
   holiday: "Feriado",
   lesson: "Aula",
   lesson_student: "Agendamento",
+  agenda_event: "Reunião, evento ou nivelamento",
+  course_material: "Material",
   enrollment: "Matrícula",
   credit_entry: "Crédito",
   contract: "Contrato",

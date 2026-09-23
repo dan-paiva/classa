@@ -114,6 +114,11 @@ export type TenantSettings = {
     installments: number;
     dueDay: number;
   };
+  /** Opcional: escola sem o campo segue o padrão de cada decisão. */
+  flows?: {
+    /** Área que matricula no fim da entrada do aluno (decisão D16). Padrão: Administrativo. */
+    entryEnrollmentArea?: "adm" | "com" | "ped" | "aca" | "cx" | "fin" | "mkt";
+  };
 };
 
 export const DEFAULT_TENANT_SETTINGS: TenantSettings = {
@@ -609,6 +614,11 @@ export const enrollment = pgTable(
     moduleId: uuid("module_id").references(() => courseModule.id),
     modality: text("modality", { enum: MODALITIES }).notNull(),
     packageLessons: integer("package_lessons").notNull(),
+    /**
+     * Paga antes do nivelamento (DOMINIO.md §7.5.1): tem contrato e pacote, mas
+     * ainda não tem turma nem nível. Completar a matrícula desliga a marca.
+     */
+    levelPending: boolean("level_pending").notNull().default(false),
     startsOn: date("starts_on").notNull(),
     endsOn: date("ends_on").notNull(),
     endedAt: tstz("ended_at"),
@@ -618,9 +628,10 @@ export const enrollment = pgTable(
   (t) => [
     check("enrollment_package_positive", sql`${t.packageLessons} > 0`),
     // open-entry não tem turma; os outros regimes têm. O nível é obrigatório no open-entry.
+    // Aguardando nivelamento não tem nem turma nem nível.
     check(
       "enrollment_regime_shape",
-      sql`(${t.regime} = 'open_entry' and ${t.classGroupId} is null and ${t.moduleId} is not null) or (${t.regime} <> 'open_entry' and ${t.classGroupId} is not null)`,
+      sql`(${t.levelPending} and ${t.classGroupId} is null and ${t.moduleId} is null) or (not ${t.levelPending} and ((${t.regime} = 'open_entry' and ${t.classGroupId} is null and ${t.moduleId} is not null) or (${t.regime} <> 'open_entry' and ${t.classGroupId} is not null)))`,
     ),
     check("enrollment_period", sql`${t.endsOn} >= ${t.startsOn}`),
     index("enrollment_student_idx").on(t.studentId),
@@ -907,6 +918,114 @@ export const companyCharge = pgTable(
     createdAt: createdAt(),
   },
   (t) => [unique("company_charge_month_uq").on(t.companyId, t.month)],
+);
+
+/* ---------------------------------------------------------------------------
+ * Material pedagógico (DOMINIO.md §4.5): cadastrado pelo Acadêmico, entregue
+ * pelo CX no pós-venda da entrada do aluno (§7.5.1).
+ * ------------------------------------------------------------------------- */
+
+export const courseMaterial = pgTable(
+  "course_material",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    courseId: uuid("course_id")
+      .notNull()
+      .references(() => course.id),
+    /** Vazio: vale para o curso todo, qualquer nível. */
+    moduleId: uuid("module_id").references(() => courseModule.id),
+    title: text("title").notNull(),
+    /** Link do material (drive, plataforma, PDF). */
+    url: text("url").notNull(),
+    notes: text("notes"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deactivatedAt: tstz("deactivated_at"),
+  },
+  (t) => [index("course_material_course_idx").on(t.tenantId, t.courseId)],
+);
+
+/** O que cada matrícula recebeu, e quando: é o que aparece na área do aluno. */
+export const materialDelivery = pgTable(
+  "material_delivery",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    enrollmentId: uuid("enrollment_id")
+      .notNull()
+      .references(() => enrollment.id),
+    materialId: uuid("material_id")
+      .notNull()
+      .references(() => courseMaterial.id),
+    deliveredAt: tstz("delivered_at").notNull().defaultNow(),
+    deliveredBy: text("delivered_by"),
+  },
+  (t) => [primaryKey({ columns: [t.enrollmentId, t.materialId] })],
+);
+
+/* ---------------------------------------------------------------------------
+ * Eventos, reuniões e nivelamentos (DOMINIO.md §5.8). Ficam fora de `lesson`
+ * porque não têm folha, crédito nem presença; a agenda geral lê as duas.
+ * ------------------------------------------------------------------------- */
+
+export const AGENDA_EVENT_KINDS = ["reuniao", "evento", "nivelamento"] as const;
+export type AgendaEventKind = (typeof AGENDA_EVENT_KINDS)[number];
+export const AGENDA_EVENT_STATES = ["agendado", "realizado", "nao_compareceu", "cancelado"] as const;
+export type AgendaEventState = (typeof AGENDA_EVENT_STATES)[number];
+
+export const agendaEvent = pgTable(
+  "agenda_event",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    kind: text("kind", { enum: AGENDA_EVENT_KINDS }).notNull(),
+    title: text("title").notNull(),
+    startsAt: tstz("starts_at").notNull(),
+    endsAt: tstz("ends_at").notNull(),
+    /** Endereço, sala ou link da chamada. */
+    location: text("location"),
+    notes: text("notes"),
+    state: text("state", { enum: AGENDA_EVENT_STATES }).notNull().default("agendado"),
+    cancelReason: text("cancel_reason"),
+    /** Nivelamento: quem é avaliado. Pode ser lead, por isso aponta para a pessoa. */
+    evaluatedPersonId: uuid("evaluated_person_id").references(() => person.id),
+    evaluatorPersonId: uuid("evaluator_person_id").references(() => person.id),
+    courseId: uuid("course_id").references(() => course.id),
+    /** Resultado do nivelamento: alimenta a decisão, não matricula ninguém. */
+    suggestedModuleId: uuid("suggested_module_id").references(() => courseModule.id),
+    resultNotes: text("result_notes"),
+    createdBy: text("created_by"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check("agenda_event_period", sql`${t.endsAt} > ${t.startsAt}`),
+    check("agenda_event_leveling", sql`${t.kind} <> 'nivelamento' or ${t.evaluatedPersonId} is not null`),
+    index("agenda_event_tenant_starts_idx").on(t.tenantId, t.startsAt),
+  ],
+);
+
+/** Participantes por pessoa: colaborador, professor, aluno e lead entram do mesmo jeito. */
+export const agendaEventParticipant = pgTable(
+  "agenda_event_participant",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => agendaEvent.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => person.id),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.personId] }), index("agenda_event_participant_person_idx").on(t.personId)],
 );
 
 /* ---------------------------------------------------------------------------

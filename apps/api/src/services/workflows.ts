@@ -12,6 +12,7 @@ import {
   lesson,
   lessonStudent,
   person,
+  personEmail,
   sql,
   student,
   workflowCard,
@@ -23,7 +24,10 @@ import {
   addDays,
   checkRequires,
   dateInZone,
+  ENTRY_MAX_NO_SHOWS,
   FLOWS,
+  onlyDigits,
+  parseSchoolInstant,
   LEAD_LOST_REASONS,
   LEAD_STAGES,
   missingRequired,
@@ -37,7 +41,9 @@ import type { ServiceContext } from "./context.ts";
 import { issueContractTx, listInstallments, registerPayment } from "./finance.ts";
 import { changeLessonTeacher } from "./lessons.ts";
 import { createStudent, createTeacher, findOrCreatePerson, primaryEmailSql, setStudentStatus, updatePerson } from "./people.ts";
-import { transferEnrollment } from "./enrollments.ts";
+import { completeEnrollmentLevel, createEnrollment, transferEnrollment } from "./enrollments.ts";
+import { deliverMaterials } from "./materials.ts";
+import { agendaPeople, createEvent, lessonClashes, markNoShow, recordLevelingResult } from "./agenda.ts";
 
 const today = (ctx: ServiceContext) => dateInZone(ctx.now, ctx.timezone);
 const str = (v: unknown) => (typeof v === "string" ? v : v == null ? "" : String(v));
@@ -76,6 +82,16 @@ async function enrollmentLabel(ctx: ServiceContext, enrollmentId: string) {
 /** Título do cartão e dados complementares gravados na criação. */
 async function describe(ctx: ServiceContext, flow: FlowKey, data: Record<string, unknown>) {
   switch (flow) {
+    case "entrada": {
+      const l = await getLead(ctx, str(data.leadId));
+      if (l.stage === "matriculado" || l.stage === "perdido") throw invalid("leadId", "O lead já foi encerrado");
+      const open = (await listCards(ctx, "entrada")).find((c) => str(c.data.leadId) === l.id && !FLOWS.entrada.stages.find((s) => s.key === c.stage)?.final);
+      if (open) throw invalid("leadId", "Este lead já tem uma entrada em andamento");
+      // o que a pessoa já tem vem preenchido; o que veio no formulário prevalece
+      const prefill = { cpf: l.cpf, email: l.email, courseId: l.courseId };
+      const filledIn = Object.fromEntries(Object.entries(prefill).filter(([k, v]) => v && !str(data[k])));
+      return { title: l.name, extra: { ...filledIn, personId: l.personId } };
+    }
     case "substituicao": {
       const [l] = await ctx.db
         .select({ startsAt: lesson.startsAt, className: classGroup.name, teacherId: lesson.teacherId, state: lesson.state })
@@ -130,12 +146,24 @@ export async function createCard(ctx: ServiceContext, flowKey: string, data: Rec
     throw Object.assign(invalid(missing[0]!, `Preencha: ${missing.map((k) => def.fields.find((f) => f.key === k)!.label).join(", ")}`), { issues });
   }
   const { title, extra } = await describe(ctx, def.key, data);
+  // criar é entrar na primeira etapa: os requisitos e o efeito dela valem aqui também
+  const first = def.stages[0]!;
+  let initial: Record<string, unknown> = { ...data, ...extra };
+  const problem = checkRequires(first, initial, def);
+  if (problem) throw unprocessable(problem);
+  const effect = EFFECTS[def.key]?.[first.key];
+  let note = "Criado";
+  if (effect) {
+    const r = await effect(ctx, initial);
+    initial = { ...initial, ...(r.data ?? {}), effectsDone: { [first.key]: true } };
+    note = `Criado · ${r.note}`;
+  }
   return ctx.db.transaction(async (tx) => {
     const [card] = await tx
       .insert(workflowCard)
-      .values({ tenantId: ctx.tenantId, flow: def.key, stage: def.stages[0]!.key, title, data: { ...data, ...extra }, createdBy: ctx.actorId, stageChangedAt: ctx.now })
+      .values({ tenantId: ctx.tenantId, flow: def.key, stage: first.key, title, data: initial, createdBy: ctx.actorId, stageChangedAt: ctx.now })
       .returning();
-    await tx.insert(workflowTransition).values({ tenantId: ctx.tenantId, cardId: card!.id, toStage: card!.stage, actorId: ctx.actorId, note: "Criado" });
+    await tx.insert(workflowTransition).values({ tenantId: ctx.tenantId, cardId: card!.id, toStage: card!.stage, actorId: ctx.actorId, note });
     await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: `fluxo:${def.key}`, entityId: card!.id, action: "create", after: card });
     return card!;
   });
@@ -164,7 +192,135 @@ export async function updateCard(ctx: ServiceContext, id: string, patch: Record<
 
 type Effect = (ctx: ServiceContext, data: Record<string, unknown>) => Promise<{ note: string; data?: Record<string, unknown> }>;
 
+/** Duração do nivelamento marcado pelo fluxo de entrada. */
+const LEVELING_MINUTES = 60;
+
+function parseLocalInstant(ctx: ServiceContext, value: string) {
+  const d = parseSchoolInstant(value, ctx.timezone);
+  if (!d) throw invalid("levelingStartsAt", "Data e hora inválidas");
+  return d;
+}
+
+/**
+ * Fluxo de entrada (DOMINIO.md §7.5.1). A pessoa existe desde a captação;
+ * aqui ela ganha CPF, vai para a agenda como avaliada e, no fim, vira aluno.
+ */
+const ENTRY_EFFECTS: Record<string, Effect> = {
+  dados: async (ctx, d) => {
+    const l = await getLead(ctx, str(d.leadId));
+    const cpf = onlyDigits(str(d.cpf));
+    // o CPF reconcilia: se já é de outra pessoa (ex-aluno), o lead passa a apontar para ela
+    const [owner] = await ctx.db
+      .select({ id: person.id })
+      .from(person)
+      .where(and(eq(person.tenantId, ctx.tenantId), eq(person.cpf, cpf)));
+    let personId = l.personId;
+    let note = "Dados gravados na ficha da pessoa.";
+    if (owner && owner.id !== l.personId) {
+      personId = owner.id;
+      // a ficha criada na captação fica para trás; se ela é só de lead, o e-mail vai junto
+      // para a ficha do CPF, em vez de brigar com ela pela unicidade
+      const [{ leadOnly } = { leadOnly: false }] = await ctx.db
+        .select({
+          leadOnly: sql<boolean>`not exists (select 1 from student s where s.person_id = ${l.personId})
+            and not exists (select 1 from teacher t where t.person_id = ${l.personId})
+            and not exists (select 1 from membership m where m.person_id = ${l.personId})`,
+        })
+        .from(person)
+        .where(eq(person.id, l.personId));
+      if (leadOnly && str(d.email)) {
+        await ctx.db.delete(personEmail).where(and(eq(personEmail.personId, l.personId), sql`lower(${personEmail.email}) = ${str(d.email).trim().toLowerCase()}`));
+      }
+      await findOrCreatePerson(ctx.db, ctx, { name: l.name, cpf, email: str(d.email) });
+      await ctx.db.update(lead).set({ personId }).where(eq(lead.id, l.id));
+      note = "O CPF já era de uma pessoa cadastrada: o lead passou a apontar para a ficha dela.";
+    } else {
+      const [p] = await ctx.db.select({ birthDate: person.birthDate }).from(person).where(eq(person.id, l.personId));
+      await updatePerson(ctx, l.personId, { name: l.name, phone: l.phone, birthDate: p?.birthDate ?? null, cpf, email: str(d.email) });
+    }
+    if (str(d.courseId)) await ctx.db.update(lead).set({ courseId: str(d.courseId) }).where(eq(lead.id, l.id));
+    return { note, data: { personId } };
+  },
+  marcado: async (ctx, d) => {
+    const l = await getLead(ctx, str(d.leadId));
+    const startsAt = parseLocalInstant(ctx, str(d.levelingStartsAt));
+    const endsAt = new Date(startsAt.getTime() + LEVELING_MINUTES * 60_000);
+    // o card anda mesmo com choque; o aviso fica no histórico
+    const clashes = await lessonClashes(ctx, [l.personId, str(d.evaluatorPersonId)], startsAt, endsAt);
+    const event = await createEvent(ctx, {
+      kind: "nivelamento",
+      title: "Nivelamento",
+      startsAt,
+      endsAt,
+      location: str(d.levelingLocation) || null,
+      evaluatedPersonId: l.personId,
+      evaluatorPersonId: str(d.evaluatorPersonId),
+      courseId: str(d.courseId) || null,
+      force: true,
+    });
+    if (l.stage === "captado" || l.stage === "contato") {
+      await ctx.db.update(lead).set({ stage: "nivelamento", stageChangedAt: ctx.now }).where(eq(lead.id, l.id));
+    }
+    // remarcou: o aluno respondeu, então a marca de "sem resposta" sai
+    return { note: ["Nivelamento na agenda.", ...clashes.map((c) => `Aviso: ${c}`)].join(" "), data: { eventId: event.id, unresponsive: false } };
+  },
+  nivelado: async (ctx, d) => {
+    if (!str(d.eventId)) throw unprocessable("O card não tem nivelamento marcado. Volte para Nivelamento a marcar.");
+    await recordLevelingResult(ctx, str(d.eventId), { suggestedModuleId: str(d.suggestedModuleId), resultNotes: str(d.levelingNotes) || null });
+    return { note: "Resultado gravado no nivelamento." };
+  },
+  // pagou antes de nivelar: vira aluno agora, com a matrícula esperando o nível
+  fechado: async (ctx, d) => {
+    const l = await getLead(ctx, str(d.leadId));
+    const studentId = await studentOf(ctx, l.personId);
+    const installments = Number(d.installments) || undefined;
+    const e = await createEnrollment(ctx, {
+      studentId,
+      courseId: str(d.courseId),
+      packageLessons: Number(d.packageLessons),
+      levelPending: true,
+      contract: installments ? { installments } : undefined,
+    });
+    await ctx.db.update(lead).set({ studentId }).where(eq(lead.id, l.id));
+    return { note: "Aluno criado e contrato emitido. A matrícula espera o nivelamento.", data: { studentId, enrollmentId: e.id } };
+  },
+  pago: async (ctx, d) => {
+    const parcelas = await listInstallments(ctx, { enrollmentId: str(d.enrollmentId) });
+    const primeira = parcelas.filter((i) => i.status !== "cancelada").sort((a, b) => a.number - b.number)[0];
+    // sem parcela é aluno de empresa B2B: quem paga é a empresa
+    if (primeira && primeira.status !== "paga") throw unprocessable("A primeira parcela ainda não está paga. Registre o pagamento no Financeiro.");
+    return { note: primeira ? "Primeira parcela paga." : "Sem parcela para o aluno: quem paga é a empresa." };
+  },
+  matricula: async (ctx, d) => {
+    const regime = str(d.regime);
+    if (regime !== "regular" && regime !== "open_entry") throw invalid("regime", "Escolha o regime: regular ou open-entry");
+    if (regime === "regular" && !str(d.classGroupId)) throw unprocessable("Para Matrícula completa no regime regular, preencha: Turma.");
+    if (!str(d.enrollmentId)) throw unprocessable("O card não tem matrícula aberta. Volte para Fechado.");
+    await completeEnrollmentLevel(ctx, str(d.enrollmentId), {
+      regime,
+      classGroupId: regime === "regular" ? str(d.classGroupId) : null,
+      moduleId: regime === "open_entry" ? str(d.suggestedModuleId) : null,
+    });
+    await ctx.db.update(lead).set({ stage: "matriculado", stageChangedAt: ctx.now }).where(eq(lead.id, str(d.leadId)));
+    return { note: "Matrícula completa: o aluno entrou nas aulas." };
+  },
+  // pós-venda: o CX manda o material do curso e do nível, que fica na área do aluno
+  material: async (ctx, d) => {
+    if (!str(d.enrollmentId)) throw unprocessable("O card não tem matrícula aberta.");
+    const sent = await deliverMaterials(ctx, str(d.enrollmentId));
+    return { note: `Material enviado: ${sent.map((m) => m.title).join(", ")}.` };
+  },
+  perdido: async (ctx, d) => {
+    // depois de fechar, a pessoa é aluno com contrato: sair é cancelar, com retenção
+    if (str(d.enrollmentId)) throw unprocessable("Já é aluno com contrato. Para desistir, use o fluxo Cancelamento e retenção.");
+    const l = await getLead(ctx, str(d.leadId));
+    if (l.stage !== "matriculado" && l.stage !== "perdido") await moveLead(ctx, l.id, { to: "perdido", reason: str(d.lostReason) });
+    return { note: `Lead perdido: ${str(d.lostReason)}.` };
+  },
+};
+
 const EFFECTS: Partial<Record<FlowKey, Record<string, Effect>>> = {
+  entrada: ENTRY_EFFECTS,
   substituicao: {
     confirmado: async (ctx, d) => {
       await changeLessonTeacher(ctx, str(d.lessonId), str(d.substituteId));
@@ -301,14 +457,86 @@ export async function moveCard(ctx: ServiceContext, id: string, to: string, note
   return card;
 }
 
+/**
+ * Não compareceu ao nivelamento (§7.5.1): o card volta para "a marcar" e a
+ * falta conta. Na terceira, fica marcado "sem resposta" para o CX (D17): o
+ * aluno já pagou, então não vira Perdido.
+ * Os efeitos de marcar em diante são liberados para rodar de novo, com outra data.
+ */
+export async function entryNoShow(ctx: ServiceContext, id: string) {
+  const card = await getCard(ctx, id);
+  if (card.flow !== "entrada") throw unprocessable("Só a entrada do aluno tem nivelamento.");
+  if (card.stage !== "marcado" && card.stage !== "comunicada") throw unprocessable("O card não está com nivelamento marcado.");
+  if (str(card.data.eventId)) await markNoShow(ctx, str(card.data.eventId));
+  const noShows = (Number(card.data.noShows) || 0) + 1;
+  // já pagou: não vira Perdido. Na terceira, o card fica marcado para o CX procurar (D17)
+  const unresponsive = noShows >= ENTRY_MAX_NO_SHOWS;
+  const { marcado: _m, comunicada: _c, nivelado: _n, ...keep } = (card.data.effectsDone as Record<string, boolean> | undefined) ?? {};
+  const { levelingStartsAt: _s, eventId: _e, ...rest } = card.data;
+  const [row] = await ctx.db
+    .update(workflowCard)
+    .set({ stage: "a_marcar", data: { ...rest, noShows, unresponsive, effectsDone: keep }, stageChangedAt: ctx.now })
+    .where(eq(workflowCard.id, id))
+    .returning();
+  await ctx.db.insert(workflowTransition).values({
+    tenantId: ctx.tenantId,
+    cardId: id,
+    fromStage: card.stage,
+    toStage: "a_marcar",
+    actorId: ctx.actorId,
+    note: unresponsive
+      ? `Não compareceu ao nivelamento pela ${noShows}ª vez. Sem resposta: o CX precisa procurar o aluno.`
+      : `Não compareceu ao nivelamento (${noShows} de ${ENTRY_MAX_NO_SHOWS}). Marque outra data.`,
+  });
+  await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "fluxo:entrada", entityId: id, action: "transition", before: card, after: row });
+  return row!;
+}
+
+/**
+ * Sem vaga na semana pedida (§7.5.1): o card fica em "a marcar", com a próxima
+ * data possível anotada e registrada no histórico, para o comercial renegociar.
+ */
+export async function entryNoSlot(ctx: ServiceContext, id: string, nextPossibleOn: string) {
+  const card = await getCard(ctx, id);
+  if (card.flow !== "entrada") throw unprocessable("Só a entrada do aluno tem nivelamento.");
+  if (card.stage !== "a_marcar") throw unprocessable("Só dá para registrar falta de vaga com o nivelamento ainda a marcar.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextPossibleOn)) throw invalid("nextPossibleOn", "Informe a próxima data possível");
+  if (nextPossibleOn < today(ctx)) throw invalid("nextPossibleOn", "A próxima data possível não pode ser no passado");
+  const [row] = await ctx.db
+    .update(workflowCard)
+    .set({ data: { ...card.data, nextPossibleOn } })
+    .where(eq(workflowCard.id, id))
+    .returning();
+  await ctx.db.insert(workflowTransition).values({
+    tenantId: ctx.tenantId,
+    cardId: id,
+    fromStage: card.stage,
+    toStage: card.stage,
+    actorId: ctx.actorId,
+    note: `Sem vaga na semana pedida. Próxima data possível: ${nextPossibleOn.split("-").reverse().join("/")}.`,
+  });
+  await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "fluxo:entrada", entityId: id, action: "update", before: card, after: row });
+  return row!;
+}
+
+/** Cartões do fluxo, com as etapas por onde já passaram: quem passou continua vendo (§7.5). */
 export async function listCards(ctx: ServiceContext, flowKey: string) {
   const def = flowOf(flowKey);
   const cards = await ctx.db
-    .select()
+    .select({
+      card: workflowCard,
+      // qualificado à mão: sem join, o drizzle deixaria "id" solto e ele casaria com wt.id
+      visited: sql<string[]>`(select coalesce(array_agg(distinct wt.to_stage), '{}') from workflow_transition wt where wt.card_id = "workflow_card"."id")`,
+    })
     .from(workflowCard)
     .where(and(eq(workflowCard.tenantId, ctx.tenantId), eq(workflowCard.flow, def.key)))
     .orderBy(desc(workflowCard.stageChangedAt));
-  return cards;
+  return cards.map((r) => ({ ...r.card, visited: r.visited }));
+}
+
+export async function visitedStages(ctx: ServiceContext, cardId: string) {
+  const rows = await ctx.db.selectDistinct({ s: workflowTransition.toStage }).from(workflowTransition).where(eq(workflowTransition.cardId, cardId));
+  return rows.map((r) => r.s);
 }
 
 export async function cardDetail(ctx: ServiceContext, id: string) {
@@ -460,6 +688,15 @@ export async function moveLead(ctx: ServiceContext, id: string, action: { to: "a
   return row!;
 }
 
+/** O aluno daquela pessoa; cria o papel de aluno se ela ainda não tem. */
+async function studentOf(ctx: ServiceContext, personId: string) {
+  const [existing] = await ctx.db
+    .select({ id: student.id })
+    .from(student)
+    .where(and(eq(student.tenantId, ctx.tenantId), eq(student.personId, personId)));
+  return existing?.id ?? (await createStudent(ctx, { personId })).id;
+}
+
 /**
  * Converte o lead (a partir da proposta) em aluno. A pessoa já existe desde a
  * captação: aqui só se acrescenta o papel de aluno a ela (DOMINIO.md §6.5).
@@ -467,11 +704,7 @@ export async function moveLead(ctx: ServiceContext, id: string, action: { to: "a
 export async function convertLead(ctx: ServiceContext, id: string) {
   const l = await getLead(ctx, id);
   if (l.stage !== "proposta") throw unprocessable("Só lead com proposta enviada pode ser matriculado.");
-  const [existing] = await ctx.db
-    .select({ id: student.id })
-    .from(student)
-    .where(and(eq(student.tenantId, ctx.tenantId), eq(student.personId, l.personId)));
-  const studentId = existing?.id ?? (await createStudent(ctx, { personId: l.personId })).id;
+  const studentId = await studentOf(ctx, l.personId);
   const [row] = await ctx.db.update(lead).set({ stage: "matriculado", studentId, stageChangedAt: ctx.now }).where(eq(lead.id, id)).returning();
   await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "lead", entityId: id, action: "transition", before: l, after: row });
   return row!;
@@ -485,7 +718,15 @@ export async function listLeads(ctx: ServiceContext) {
     .leftJoin(course, eq(course.id, lead.courseId))
     .where(eq(lead.tenantId, ctx.tenantId))
     .orderBy(desc(lead.stageChangedAt));
+  // entrada de cada lead, para a tela de Leads abrir o card (a mais recente vence)
+  const entries = await ctx.db
+    .select({ id: workflowCard.id, stage: workflowCard.stage, leadId: sql<string>`${workflowCard.data}->>'leadId'` })
+    .from(workflowCard)
+    .where(and(eq(workflowCard.tenantId, ctx.tenantId), eq(workflowCard.flow, "entrada")))
+    .orderBy(asc(workflowCard.createdAt));
+  const entryOf = new Map(entries.map((e) => [e.leadId, { cardId: e.id, stage: e.stage }]));
   return rows.map((r) => ({
+    entry: entryOf.get(r.lead.id) ?? null,
     ...r.lead,
     name: r.name,
     cpf: r.cpf,
@@ -506,6 +747,33 @@ export async function flowOptions(ctx: ServiceContext, flowKey: string) {
   const in21 = new Date(ctx.now.getTime() + 21 * 86400_000).toISOString();
   const ago30 = new Date(ctx.now.getTime() - 30 * 86400_000).toISOString();
   switch (def.key) {
+    case "entrada": {
+      const busy = new Set(
+        (await listCards(ctx, "entrada")).filter((c) => !FLOWS.entrada.stages.find((s) => s.key === c.stage)?.final).map((c) => str(c.data.leadId)),
+      );
+      const leads = (await listLeads(ctx)).filter((l) => l.stage !== "matriculado" && l.stage !== "perdido");
+      return {
+        leads: leads.map((l) => ({ id: l.id, name: l.name, cpf: l.cpf, email: l.email, courseId: l.courseId, busy: busy.has(l.id) })),
+        courses: await ctx.db
+          .select({ id: course.id, name: course.name })
+          .from(course)
+          .where(and(eq(course.tenantId, ctx.tenantId), isNull(course.deactivatedAt)))
+          .orderBy(asc(course.name)),
+        modules: await ctx.db
+          .select({ id: courseModule.id, name: courseModule.name, courseId: courseModule.courseId })
+          .from(courseModule)
+          .innerJoin(course, eq(course.id, courseModule.courseId))
+          .where(and(eq(course.tenantId, ctx.tenantId), isNull(courseModule.deactivatedAt)))
+          .orderBy(asc(courseModule.position)),
+        evaluators: (await agendaPeople(ctx)).filter((p) => p.canEvaluate).map((p) => ({ id: p.id, name: p.name })),
+        classGroups: await ctx.db
+          .select({ id: classGroup.id, name: classGroup.name, courseId: classGroup.courseId, moduleId: classGroup.moduleId })
+          .from(classGroup)
+          .where(and(eq(classGroup.tenantId, ctx.tenantId), eq(classGroup.regime, "regular"), isNull(classGroup.deactivatedAt)))
+          .orderBy(asc(classGroup.name)),
+        lostReasons: LEAD_LOST_REASONS,
+      };
+    }
     case "substituicao":
       return {
         lessons: await ctx.db

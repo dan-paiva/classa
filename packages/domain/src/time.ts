@@ -52,3 +52,13 @@ export function zonedToUtc(isoDate: string, hhmm: string, timeZone: string): Dat
 export function dateInZone(instant: Date, timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(instant);
 }
+
+/**
+ * Instante vindo de formulário: "AAAA-MM-DDTHH:MM" sem fuso é hora da escola;
+ * com fuso (ou "Z"), vale o que veio. Devolve null se não for data válida.
+ */
+export function parseSchoolInstant(value: string, timeZone: string): Date | null {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::00)?$/.exec(value);
+  const d = m ? zonedToUtc(m[1]!, m[2]!, timeZone) : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}

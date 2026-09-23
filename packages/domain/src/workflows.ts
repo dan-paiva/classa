@@ -3,14 +3,66 @@
  * Os efeitos (trocar professor, aplicar mudança de nível…) ficam na API; aqui só as regras de movimento.
  */
 
-export type Stage = { key: string; label: string; description: string; requires?: string[]; final?: boolean; alternative?: boolean };
-export type FlowField = { key: string; label: string; kind: "text" | "textarea" | "number" | "date" | "select" | "money"; required?: boolean; hint?: string };
+import { FLOW_AREA, type Area } from "./access.ts";
+
+/**
+ * `area` é da etapa, não do fluxo (DOMINIO.md §7.5): sem ela, vale a área do fluxo.
+ * Fluxo de área única é o caso em que nenhuma etapa diz a sua.
+ */
+export type Stage = { key: string; label: string; description: string; requires?: string[]; final?: boolean; alternative?: boolean; area?: Area };
+export type FlowField = {
+  key: string;
+  label: string;
+  kind: "text" | "textarea" | "number" | "date" | "datetime" | "select" | "money";
+  required?: boolean;
+  hint?: string;
+};
 export type FlowDefinition = { key: FlowKey; title: string; singular: string; description: string; area: string; stages: Stage[]; fields: FlowField[] };
 
-export const FLOW_KEYS = ["substituicao", "nivel", "reposicao", "admissao", "cobranca", "renovacao", "retencao", "campanha"] as const;
+export const FLOW_KEYS = ["entrada", "substituicao", "nivel", "reposicao", "admissao", "cobranca", "renovacao", "retencao", "campanha"] as const;
 export type FlowKey = (typeof FLOW_KEYS)[number];
 
 export const FLOWS: Record<FlowKey, FlowDefinition> = {
+  entrada: {
+    key: "entrada",
+    title: "Entrada do aluno",
+    singular: "entrada",
+    description: "Do primeiro contato às boas-vindas: fechamento, pagamento, nivelamento, matrícula e material.",
+    area: "Comercial, Financeiro, Pedagógico, Administrativo e CX",
+    stages: [
+      { key: "dados", label: "Dados", description: "O comercial colhe CPF, e-mail, curso, disponibilidade e pacote.", area: "com", requires: ["cpf", "email", "courseId", "availability", "packageLessons"] },
+      { key: "fechado", label: "Fechado", description: "O lead aceitou: vira aluno, a matrícula abre aguardando nivelamento e o contrato sai com as parcelas.", area: "com" },
+      { key: "pago", label: "Pagamento confirmado", description: "A primeira parcela está paga. O card segue para o pedagógico.", area: "fin" },
+      { key: "a_marcar", label: "Nivelamento a marcar", description: "O pedagógico acha data e avaliador dentro da disponibilidade declarada.", area: "ped" },
+      { key: "marcado", label: "Nivelamento marcado", description: "O nivelamento entra na agenda, com o aluno como avaliado.", area: "ped", requires: ["levelingStartsAt", "evaluatorPersonId"] },
+      { key: "comunicada", label: "Data comunicada", description: "O comercial avisou o aluno da data.", area: "com" },
+      { key: "nivelado", label: "Nivelado", description: "O resultado vai para o nivelamento.", area: "ped", requires: ["suggestedModuleId"] },
+      { key: "matricula", label: "Matrícula completa", description: "A matrícula ganha turma ou nível e o aluno entra nas aulas.", area: "adm", requires: ["regime"] },
+      { key: "boas_vindas", label: "Boas-vindas", description: "O CX recebe o aluno: apresenta a escola, a agenda e como falar com o suporte.", area: "cx" },
+      { key: "material", label: "Material enviado", description: "O material do curso e do nível vai para o aluno e aparece na área dele.", area: "cx" },
+      { key: "concluida", label: "Concluída", description: "Aluno recebido, com turma ou nível e material.", area: "cx", final: true },
+      { key: "perdido", label: "Perdido", description: "Desistiu antes de fechar: o lead sai do funil; a pessoa fica.", area: "com", requires: ["lostReason"], final: true, alternative: true },
+    ],
+    fields: [
+      { key: "leadId", label: "Lead", kind: "select", required: true },
+      { key: "cpf", label: "CPF", kind: "text" },
+      { key: "email", label: "E-mail", kind: "text" },
+      { key: "courseId", label: "Curso de interesse", kind: "select" },
+      { key: "availability", label: "Disponibilidade", kind: "text", hint: "Ex.: seg e qua depois das 18h" },
+      { key: "packageLessons", label: "Aulas no pacote", kind: "number" },
+      { key: "installments", label: "Parcelas", kind: "number", hint: "Vazio: o padrão da escola" },
+      { key: "nextPossibleOn", label: "Próxima data possível", kind: "date", hint: "Sem vaga na semana pedida: anote quando dá" },
+      { key: "levelingStartsAt", label: "Data e hora do nivelamento", kind: "datetime" },
+      { key: "evaluatorPersonId", label: "Avaliador", kind: "select" },
+      { key: "levelingLocation", label: "Local ou link", kind: "text" },
+      { key: "suggestedModuleId", label: "Módulo sugerido", kind: "select" },
+      { key: "levelingNotes", label: "Observação do nivelamento", kind: "textarea" },
+      { key: "regime", label: "Regime", kind: "select" },
+      { key: "classGroupId", label: "Turma", kind: "select", hint: "Só no regime regular" },
+      { key: "lostReason", label: "Motivo da perda", kind: "select" },
+      { key: "notes", label: "Observações", kind: "textarea" },
+    ],
+  },
   substituicao: {
     key: "substituicao",
     title: "Substituição de professor",
@@ -206,6 +258,40 @@ export function transitionPath(def: FlowDefinition, from: string, to: string): {
   if (iTo < iFrom) return { ok: true, path: [] };
   return { ok: true, path: stages.slice(iFrom + 1, iTo + 1).filter((s) => !s.alternative) };
 }
+
+/** Área de etapa que a escola escolheu, por cima da definição (ex.: D16). Chave: etapa. */
+export type StageAreaOverrides = Partial<Record<string, Area>>;
+
+/** Área dona da etapa: a escolhida pela escola, a da própria etapa ou, sem elas, a do fluxo. */
+export function stageArea(def: FlowDefinition, stageKey: string, overrides?: StageAreaOverrides): Area {
+  return overrides?.[stageKey] ?? def.stages.find((s) => s.key === stageKey)?.area ?? FLOW_AREA[def.key] ?? "adm";
+}
+
+/** Todas as áreas que o fluxo atravessa. */
+export function flowAreas(def: FlowDefinition, overrides?: StageAreaOverrides): Area[] {
+  return [...new Set(def.stages.map((s) => stageArea(def, s.key, overrides)))];
+}
+
+/** Decisão D16: que área completa a matrícula na entrada, configurável por escola. */
+export const DEFAULT_ENTRY_ENROLLMENT_AREA: Area = "adm";
+export function stageOverrides(flow: string, settings: { flows?: { entryEnrollmentArea?: Area } } | null | undefined): StageAreaOverrides | undefined {
+  if (flow !== "entrada") return undefined;
+  const area = settings?.flows?.entryEnrollmentArea ?? DEFAULT_ENTRY_ENROLLMENT_AREA;
+  return { matricula: area };
+}
+
+/** Próxima etapa do caminho principal (sem as alternativas), ou null na última. */
+export function nextStage(def: FlowDefinition, stageKey: string): Stage | null {
+  const i = def.stages.findIndex((s) => s.key === stageKey);
+  if (i < 0 || def.stages[i]!.final) return null;
+  return def.stages.slice(i + 1).find((s) => !s.alternative) ?? null;
+}
+
+/**
+ * Faltas no nivelamento até o card ficar marcado "sem resposta" (decisão D17).
+ * Como o aluno já pagou, ele não vira Perdido: o CX é quem procura.
+ */
+export const ENTRY_MAX_NO_SHOWS = 3;
 
 export function checkRequires(stage: Stage, data: Record<string, unknown>, def: FlowDefinition): string | null {
   const missing = (stage.requires ?? []).filter((k) => !filled(data[k]));

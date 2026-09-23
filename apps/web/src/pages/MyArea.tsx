@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
+import { useState } from "react";
 import { school } from "../api-school.ts";
 import { fmtIsoDate, fmtLongDay, fmtShortDate, fmtTime, fmtWeekday, money } from "../lib/format.ts";
 import { InstallmentBadge, UsageBar } from "../status.tsx";
@@ -33,6 +34,26 @@ export function MyArea() {
         <Stat label="Em aberto" value={money(open.reduce((s, i) => s + i.amountCents - i.paidCents, 0))} tone={installments.some((i) => i.status === "vencida") ? "danger" : undefined} />
       </div>
 
+      <LevelingsPanel slug={slug} />
+      {q.data.materials.length > 0 && (
+        <section className="panel stack">
+          <h2>Meus materiais</h2>
+          <ul className="plain">
+            {q.data.materials.map((m) => (
+              <li key={m.id}>
+                <a href={m.url} target="_blank" rel="noreferrer">
+                  {m.title}
+                </a>{" "}
+                <span className="muted small">
+                  · {m.courseName}
+                  {m.moduleName ? ` · ${m.moduleName}` : ""}
+                </span>
+                {m.notes && <div className="muted small">{m.notes}</div>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <OpenSlotsPanel slug={slug} />
 
       <div className="grid-2">
@@ -88,7 +109,9 @@ export function MyArea() {
                 {e.courseName}
               </strong>
               <span className="small muted">
-                {e.className ?? (
+                {e.levelPending ? (
+                  <Badge tone="warn">Aguardando nivelamento</Badge>
+                ) : e.className ?? (
                   <>
                     <Badge tone="info">Open-entry</Badge> {e.moduleName ?? "sem nível"}
                   </>
@@ -219,6 +242,27 @@ function OpenSlotsPanel({ slug }: { slug: string }) {
           </div>
         );
       })}
+    </section>
+  );
+}
+
+/** Nivelamentos marcados para o aluno nos próximos 60 dias (DOMINIO.md §5.10). Some quando não há. */
+function LevelingsPanel({ slug }: { slug: string }) {
+  const [range] = useState(() => ({ from: new Date().toISOString(), to: new Date(Date.now() + 60 * 86400_000).toISOString() }));
+  const q = useQuery({ queryKey: ["agenda", slug, "meus-nivelamentos", range], queryFn: () => school.agenda(slug, { ...range, type: "nivelamento" }) });
+  const items = (q.data?.items ?? []).filter((i) => !i.cancelled && i.state === "agendado");
+  if (items.length === 0) return null;
+  return (
+    <section className="panel stack">
+      <h2>Nivelamento marcado</h2>
+      <ul className="plain">
+        {items.map((i) => (
+          <li key={i.id}>
+            {fmtLongDay(i.startsAt)}, {fmtTime(i.startsAt)}–{fmtTime(i.endsAt)}
+            {i.detail && <span className="muted"> · {/^https?:\/\//.test(i.detail) ? <a href={i.detail}>entrar na chamada</a> : i.detail}</span>}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

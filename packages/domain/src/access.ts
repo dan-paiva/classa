@@ -40,7 +40,9 @@ const MAX_LEVEL: Record<Action, number> = { ver: 5, operar: 4, editar: 3, inativ
 
 export const RESOURCES = [
   "agenda",
+  "eventos",
   "cursos",
+  "materiais",
   "turmas",
   "alunos",
   "professores",
@@ -65,7 +67,11 @@ export type Resource = (typeof RESOURCES)[number];
 /** Áreas que permitem ver cada recurso. Recursos sem área são só do tipo Admin. */
 export const RESOURCE_AREAS: Record<Resource, readonly Area[]> = {
   agenda: AREAS,
+  // reunião, evento e nivelamento: qualquer área cria (DOMINIO.md §5.8)
+  eventos: AREAS,
   cursos: ["ped", "aca", "com", "cx", "mkt", "adm"],
+  // o acadêmico cuida; o CX entrega; pedagógico e comercial consultam
+  materiais: ["aca", "ped", "cx", "com", "adm"],
   turmas: ["ped", "aca", "adm", "com", "cx"],
   alunos: ["aca", "adm", "com", "cx", "fin", "mkt"],
   professores: ["ped", "aca", "adm", "fin"],
@@ -91,6 +97,7 @@ export const RESOURCE_ACT_AREAS: Partial<Record<Resource, readonly Area[]>> = {
   relatorios: [], // relatório é só leitura
   agenda: ["ped", "aca"],
   cursos: ["ped", "aca"],
+  materiais: ["aca"],
   turmas: ["ped", "aca"],
   alunos: ["aca", "com", "cx", "adm"],
   professores: ["ped", "adm"],
@@ -120,6 +127,7 @@ export function permissionMap(p: AccessProfile): Record<Resource, Action[]> {
 
 /** Área de cada fluxo em kanban. */
 export const FLOW_AREA: Record<string, Area> = {
+  entrada: "com", // área de cada etapa em FLOWS.entrada; esta é só a porta de entrada
   substituicao: "ped",
   nivel: "aca",
   reposicao: "aca",

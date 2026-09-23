@@ -371,7 +371,7 @@ export async function generateLessons(ctx: ServiceContext, classGroupId: string,
 /** Aulas de um intervalo, com nomes e contagem de inscritos e presenças. */
 export async function listLessons(
   ctx: ServiceContext,
-  filters: { from: Date; to: Date; id?: string; teacherId?: string; classGroupId?: string; courseId?: string; studentId?: string },
+  filters: { from: Date; to: Date; id?: string; teacherId?: string; classGroupId?: string; courseId?: string; studentId?: string; roomId?: string; moduleId?: string },
 ) {
   const originalPerson = sql<string | null>`(select p2.name from teacher t2 join person p2 on p2.id = t2.person_id where t2.id = ${lesson.originalTeacherId})`;
   const rows = await ctx.db
@@ -379,6 +379,7 @@ export async function listLessons(
       lesson,
       className: classGroup.name,
       individual: classGroup.individual,
+      regime: classGroup.regime,
       capacity: classGroup.capacity,
       modality: classGroup.modality,
       courseName: course.name,
@@ -407,6 +408,8 @@ export async function listLessons(
         filters.teacherId ? eq(lesson.teacherId, filters.teacherId) : undefined,
         filters.classGroupId ? eq(lesson.classGroupId, filters.classGroupId) : undefined,
         filters.courseId ? eq(lesson.courseId, filters.courseId) : undefined,
+        filters.roomId ? eq(lesson.roomId, filters.roomId) : undefined,
+        filters.moduleId ? eq(lesson.moduleId, filters.moduleId) : undefined,
         filters.studentId
           ? sql`exists (select 1 from lesson_student ls where ls.lesson_id = ${lesson.id} and ls.student_id = ${filters.studentId})`
           : undefined,
@@ -417,6 +420,7 @@ export async function listLessons(
     ...r.lesson,
     className: r.className,
     individual: r.individual,
+    regime: r.regime,
     capacity: r.capacity,
     modality: r.modality,
     courseName: r.courseName,

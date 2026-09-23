@@ -173,6 +173,16 @@ Só em cursos `grupo` e `turmas_dedicadas`. Tem ordem, nome e cor. O **módulo i
 - A aula recebe o conteúdo *i* da sequência na *i*-ésima aula do módulo ou turma e **grava qual recebeu**.
 - Cada módulo aceita um único currículo de produto.
 
+### 4.5 Material do aluno
+É o que o aluno recebe para estudar: um **link** (drive, plataforma, PDF) ligado a um curso e, se quiser, a um nível. É diferente do currículo (4.4), que diz o conteúdo de cada aula.
+
+- Campos: curso, nível (vazio = vale para o curso todo), título, link, observação para o aluno.
+- **Quem cuida:** o Acadêmico cadastra, edita e inativa (Editor ou acima). Pedagógico, CX, Comercial e Administrativo consultam.
+- **Entrega:** no pós-venda da entrada do aluno (7.5.1), o CX envia. Vão o material ativo do curso todo e o do nível da matrícula. Entregar de novo não duplica.
+- Inativar tira o material das próximas entregas; quem já recebeu continua vendo.
+- O aluno vê na área dele tudo o que recebeu, nas matrículas ativas.
+- Fica de fora por ora: reenviar o material do nível novo quando o aluno muda de nível (7.5, Mudança de nível).
+
 ## 5. Agenda
 
 ### 5.1 Turma / oferta
@@ -488,6 +498,8 @@ Motor comum:
 - **Voltar etapa:** não desfaz efeitos. O card mostra o aviso.
 - **Área por etapa:** a área é da **etapa**, não do fluxo. O card aparece no quadro do time dono da etapa em que está, e quem opera é Colaborador ou acima **daquela área**. Fluxo de área única é o caso particular em que todas as etapas têm a mesma área.
 - **Passagem de bastão:** ao entrar numa etapa de outra área, o card sai de um quadro e entra no outro. Quem passou continua **vendo** o card, para poder responder ao aluno, mas não o move mais.
+- **Quem puxa:** a área da **próxima** etapa também vê o card e pode levá-lo **só para a etapa dela**. É o que faz a passagem funcionar: na entrada do aluno, o comercial avisa a data e move o card de *Nivelamento marcado* (Pedagógico) para *Data comunicada* (Comercial). A área dona da etapa atual move para qualquer etapa; a área de uma etapa alternativa (ex.: *Perdido*, do Comercial) manda o card para ela a qualquer momento. Editar os campos do card é de quem é da etapa atual ou da próxima.
+- **Criar** o card é da área da primeira etapa, e criar conta como entrar nela: os requisitos e o efeito da primeira etapa valem na criação.
 
 | Fluxo | Etapas | Efeito |
 | --- | --- | --- |
@@ -502,25 +514,31 @@ Motor comum:
 | Entrada do aluno | atravessa Comercial, Pedagógico e Administrativo | detalhe em 7.5.1 |
 
 #### 7.5.1 Entrada do aluno
-É o fluxo que atravessa mais áreas, e o que justificou a área por etapa. Do primeiro contato à matrícula:
+É o fluxo que atravessa mais áreas, e o que justificou a área por etapa. Do primeiro contato às boas-vindas. **O aluno fecha e paga antes do nivelamento** (decidido em 23/09/2026): o nivelamento só define a turma ou o nível de quem já é aluno.
 
 | # | Etapa | Área | Exige para entrar | Efeito ao entrar |
 | --- | --- | --- | --- | --- |
 | 1 | Dados | Comercial | CPF, e-mail, curso de interesse, disponibilidade, pacote pretendido | grava na pessoa (3.1); o CPF reconcilia se ela já existir |
-| 2 | Nivelamento a marcar | Pedagógico | — | o card entra no quadro do pedagógico com a disponibilidade declarada |
-| 3 | Nivelamento marcado | Pedagógico | data, hora, avaliador | **cria o nivelamento na agenda** (5.8), com o lead como avaliado |
-| 4 | Data comunicada | Comercial | — | registra que o comercial avisou o lead |
-| 5 | Nivelado | Pedagógico | módulo sugerido | grava o resultado no nivelamento |
-| 6 | Matrícula | Administrativo (**decisão D16**) | regime, pacote, e turma se for regular | **converte o lead em aluno** (6.5) e abre a matrícula no regime escolhido |
-| 7 | Concluída | — | — | final |
+| 2 | Fechado | Comercial | — | **converte o lead em aluno** (6.5), abre a matrícula **aguardando nivelamento** (sem turma nem nível) e emite o contrato com as parcelas |
+| 3 | Pagamento confirmado | Financeiro | primeira parcela paga (aluno de empresa B2B, sem parcela, passa direto) | o card segue para o pedagógico |
+| 4 | Nivelamento a marcar | Pedagógico | — | o card entra no quadro do pedagógico com a disponibilidade declarada |
+| 5 | Nivelamento marcado | Pedagógico | data, hora, avaliador | **cria o nivelamento na agenda** (5.8), com o aluno como avaliado |
+| 6 | Data comunicada | Comercial | — | registra que o comercial avisou o aluno |
+| 7 | Nivelado | Pedagógico | módulo sugerido | grava o resultado no nivelamento |
+| 8 | Matrícula completa | Administrativo (**decisão D16**) | regime, e turma se for regular | a **mesma** matrícula ganha turma (regular) ou nível (open-entry) e o aluno entra nas aulas; o lead fica como matriculado |
+| 9 | Boas-vindas | CX | — | o CX recebe o aluno: escola, agenda e como falar com o suporte |
+| 10 | Material enviado | CX | material cadastrado para o curso e o nível (4.5) | **entrega o material** do curso todo e do nível da matrícula, que aparece na área do aluno |
+| 11 | Concluída | CX | — | final |
+
+Matrícula aguardando nivelamento tem pacote, créditos e contrato, mas não entra em aula nenhuma nem reserva vaga open-entry: não há turma nem nível para isso.
 
 Saídas alternativas — é aqui que o fluxo real costuma vazar:
 
-- **Perdido** (Comercial, exige motivo): a qualquer momento. A pessoa fica; o lead sai do funil.
-- **Não compareceu** (Pedagógico): devolve o card para a etapa 2 e conta a falta. Na terceira, vai para *Perdido* com motivo "sem resposta" (**decisão D17**).
-- **Sem vaga na semana pedida** (Pedagógico): o card fica na etapa 2 com a próxima data possível anotada, e o comercial vê para renegociar.
+- **Perdido** (Comercial, exige motivo): só **antes de fechar**. A pessoa fica; o lead sai do funil. Depois de fechado, a pessoa é aluno com contrato, e desistir é pelo fluxo de **Cancelamento e retenção** (7.5).
+- **Não compareceu** (Pedagógico): marca o nivelamento como não comparecido, devolve o card para a etapa 4 e conta a falta. Os efeitos da etapa 5 em diante voltam a rodar quando o card for remarcado, com o nivelamento novo. Na terceira falta o card fica marcado **sem resposta** e passa a aparecer também para o **CX**, só para leitura, para procurar o aluno (**decisão D17**). A marca sai quando o nivelamento é remarcado. Não vai para Perdido, porque o aluno já pagou.
+- **Sem vaga na semana pedida** (Pedagógico): o card fica na etapa 4 com a próxima data possível anotada e registrada no histórico, e o comercial vê para renegociar.
 
-Uma regra vale para o fluxo inteiro: **o nivelamento pode ser agendado para quem ainda é lead**. É a única exceção de 5.8, e é o que permite nivelar antes de matricular.
+Uma regra vale para o fluxo inteiro: **o nivelamento pode ser agendado para quem ainda é lead** (5.8). Na entrada ele já é aluno quando nivela, mas o nivelamento avulso, marcado pela agenda, continua aceitando lead.
 
 ### 7.6 Alertas
 | Alerta | Condição |
@@ -621,8 +639,8 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 | D13 | Antecedência mínima para reservar aula open-entry | A mesma janela de cancelamento do curso |
 | D14 | Trocar de nível cancela reserva futura no módulo antigo? | Não; mantém e avisa o aluno |
 | D15 | Créditos somam entre matrículas do mesmo aluno? | Não; saldo é por matrícula |
-| D16 | Que área matricula no fim do fluxo de entrada? | Administrativo, configurável por escola |
-| D17 | Quantas faltas no nivelamento até perder o lead? | Três; depois vai a `perdido` com motivo "sem resposta" |
+| D16 | Que área matricula no fim do fluxo de entrada? | Administrativo, configurável por escola em Configurações → Fluxos (fica com a etapa Matrícula completa) |
+| D17 | Quantas faltas no nivelamento até o card ficar "sem resposta"? | Três. Como o aluno já pagou (7.5.1), ele não vira Perdido: o CX procura |
 
 ## Ordem de construção
 
@@ -636,6 +654,7 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 8. **Leads, renovação e fluxos kanban.**
 9. **Perfis e acesso completos**, com escopo por registro.
 10. **Painéis, relatórios e alertas.** ✔
-11. **Identidade:** e-mail da pessoa em tabela própria, deduplicação por CPF, pessoa criada já na captação do lead, colaborador-aluno com dois vínculos. **Vem antes das duas seguintes**: as duas mexem em matrícula, e matrícula aponta para pessoa.
-12. **Open-entry:** regime na turma e na matrícula, matrícula sem turma, reserva por aula com trava de nível, de vaga e de choque.
-13. **Agenda geral e fluxo de entrada:** eventos, reuniões e nivelamento; leitura unificada da agenda; área por etapa no motor de fluxos; fluxo de entrada do aluno.
+11. **Identidade:** e-mail da pessoa em tabela própria, deduplicação por CPF, pessoa criada já na captação do lead, colaborador-aluno com dois vínculos. **Vem antes das duas seguintes**: as duas mexem em matrícula, e matrícula aponta para pessoa. ✔
+12. **Open-entry:** regime na turma e na matrícula, matrícula sem turma, reserva por aula com trava de nível, de vaga e de choque. ✔
+13. **Agenda geral e fluxo de entrada:** eventos, reuniões e nivelamento; leitura unificada da agenda; área por etapa no motor de fluxos; fluxo de entrada do aluno. ✔
+14. **Pós-venda e material do aluno:** cadastro de material por curso e nível (Acadêmico), etapas de boas-vindas e envio de material (CX) no fim da entrada, material na área do aluno. ✔

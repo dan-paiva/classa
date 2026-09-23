@@ -10,9 +10,11 @@ import { CourseDetail } from "./pages/CourseDetail.tsx";
 import { Courses } from "./pages/Courses.tsx";
 import { Dashboard } from "./pages/Dashboard.tsx";
 import { Finance } from "./pages/Finance.tsx";
+import { EventDetail, EventNew } from "./pages/Events.tsx";
 import { Flows } from "./pages/Flows.tsx";
 import { Invitation } from "./pages/Invitation.tsx";
 import { Leads } from "./pages/Leads.tsx";
+import { Materials } from "./pages/Materials.tsx";
 import { MyArea } from "./pages/MyArea.tsx";
 import { OpenSlots } from "./pages/OpenSlots.tsx";
 import { LessonDetail } from "./pages/LessonDetail.tsx";
@@ -40,6 +42,8 @@ const schoolRoute = createRoute({ getParentRoute: () => rootRoute, path: "/e/$sl
 
 const dashboardRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/", component: Dashboard });
 const agendaRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/agenda", component: Agenda });
+const eventNewRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/eventos/novo", component: EventNew });
+const eventRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/eventos/$eventId", component: EventDetail });
 const lessonRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/aulas/$lessonId", component: LessonDetail });
 const classGroupsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/turmas", component: ClassGroups });
 const classGroupRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/turmas/$classGroupId", component: ClassGroupDetail });
@@ -50,6 +54,7 @@ const teachersRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/p
 const teacherNewRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/professores/novo", component: TeacherForm });
 const teacherRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/professores/$teacherId", component: TeacherDetail });
 const coursesRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/cursos", component: Courses });
+const materialsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/materiais", component: Materials });
 const courseRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/cursos/$courseId", component: CourseDetail });
 const financeRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/financeiro", component: Finance });
 const payrollRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/folha", component: Payroll });
@@ -69,6 +74,8 @@ const routeTree = rootRoute.addChildren([
   schoolRoute.addChildren([
     dashboardRoute,
     agendaRoute,
+    eventNewRoute,
+    eventRoute,
     lessonRoute,
     classGroupsRoute,
     classGroupRoute,
@@ -80,6 +87,7 @@ const routeTree = rootRoute.addChildren([
     teacherRoute,
     coursesRoute,
     courseRoute,
+    materialsRoute,
     financeRoute,
     payrollRoute,
     reportsRoute,
