@@ -123,6 +123,7 @@ export function permissionMap(p: AccessProfile): Record<Resource, Action[]> {
 
 /** Área de cada fluxo em kanban. */
 export const FLOW_AREA: Record<string, Area> = {
+  entrada: "com", // área de cada etapa em FLOWS.entrada; esta é só a porta de entrada
   substituicao: "ped",
   nivel: "aca",
   reposicao: "aca",

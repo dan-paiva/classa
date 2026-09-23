@@ -488,6 +488,8 @@ Motor comum:
 - **Voltar etapa:** não desfaz efeitos. O card mostra o aviso.
 - **Área por etapa:** a área é da **etapa**, não do fluxo. O card aparece no quadro do time dono da etapa em que está, e quem opera é Colaborador ou acima **daquela área**. Fluxo de área única é o caso particular em que todas as etapas têm a mesma área.
 - **Passagem de bastão:** ao entrar numa etapa de outra área, o card sai de um quadro e entra no outro. Quem passou continua **vendo** o card, para poder responder ao aluno, mas não o move mais.
+- **Quem puxa:** a área da **próxima** etapa também vê o card e pode levá-lo **só para a etapa dela**. É o que faz a passagem funcionar: na entrada do aluno, o comercial avisa a data e move o card de *Nivelamento marcado* (Pedagógico) para *Data comunicada* (Comercial). A área dona da etapa atual move para qualquer etapa; a área de uma etapa alternativa (ex.: *Perdido*, do Comercial) manda o card para ela a qualquer momento. Editar os campos do card é de quem é da etapa atual ou da próxima.
+- **Criar** o card é da área da primeira etapa, e criar conta como entrar nela: os requisitos e o efeito da primeira etapa valem na criação.
 
 | Fluxo | Etapas | Efeito |
 | --- | --- | --- |
@@ -517,7 +519,7 @@ Motor comum:
 Saídas alternativas — é aqui que o fluxo real costuma vazar:
 
 - **Perdido** (Comercial, exige motivo): a qualquer momento. A pessoa fica; o lead sai do funil.
-- **Não compareceu** (Pedagógico): devolve o card para a etapa 2 e conta a falta. Na terceira, vai para *Perdido* com motivo "sem resposta" (**decisão D17**).
+- **Não compareceu** (Pedagógico): marca o nivelamento como não comparecido, devolve o card para a etapa 2 e conta a falta. Os efeitos da etapa 3 em diante voltam a rodar quando o card for remarcado, com o nivelamento novo. Na terceira, vai para *Perdido* com motivo "sem resposta" (**decisão D17**).
 - **Sem vaga na semana pedida** (Pedagógico): o card fica na etapa 2 com a próxima data possível anotada, e o comercial vê para renegociar.
 
 Uma regra vale para o fluxo inteiro: **o nivelamento pode ser agendado para quem ainda é lead**. É a única exceção de 5.8, e é o que permite nivelar antes de matricular.
@@ -636,6 +638,6 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 8. **Leads, renovação e fluxos kanban.**
 9. **Perfis e acesso completos**, com escopo por registro.
 10. **Painéis, relatórios e alertas.** ✔
-11. **Identidade:** e-mail da pessoa em tabela própria, deduplicação por CPF, pessoa criada já na captação do lead, colaborador-aluno com dois vínculos. **Vem antes das duas seguintes**: as duas mexem em matrícula, e matrícula aponta para pessoa.
-12. **Open-entry:** regime na turma e na matrícula, matrícula sem turma, reserva por aula com trava de nível, de vaga e de choque.
-13. **Agenda geral e fluxo de entrada:** eventos, reuniões e nivelamento; leitura unificada da agenda; área por etapa no motor de fluxos; fluxo de entrada do aluno.
+11. **Identidade:** e-mail da pessoa em tabela própria, deduplicação por CPF, pessoa criada já na captação do lead, colaborador-aluno com dois vínculos. **Vem antes das duas seguintes**: as duas mexem em matrícula, e matrícula aponta para pessoa. ✔
+12. **Open-entry:** regime na turma e na matrícula, matrícula sem turma, reserva por aula com trava de nível, de vaga e de choque. ✔
+13. **Agenda geral e fluxo de entrada:** eventos, reuniões e nivelamento; leitura unificada da agenda; área por etapa no motor de fluxos; fluxo de entrada do aluno. ✔
