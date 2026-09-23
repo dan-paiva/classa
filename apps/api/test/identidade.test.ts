@@ -91,4 +91,14 @@ describe("identidade da pessoa", () => {
     const res = await admin.json("/students", "POST", { person: { name: "Segunda", email: "disputado@exemplo.com" } });
     expect(res.status).toBe(409);
   });
+
+  it("a ficha do aluno e a do professor mostram o e-mail, que mora em person_email", async () => {
+    const { student } = await body<{ student: { id: string } }>(await admin.json("/students", "POST", { person: { name: "Aluna Com Email", email: "aluna.ficha@exemplo.com" } }));
+    const ficha = await body<{ student: { person: { email: string | null } } }>(await admin.json(`/students/${student.id}`));
+    expect(ficha.student.person.email).toBe("aluna.ficha@exemplo.com");
+
+    const { teacher } = await body<{ teacher: { id: string } }>(await admin.json("/teachers", "POST", { person: { name: "Prof Com Email", email: "prof.ficha@exemplo.com" } }));
+    const detalhe = await body<{ teacher: { person: { email: string | null } } }>(await admin.json(`/teachers/${teacher.id}`));
+    expect(detalhe.teacher.person.email).toBe("prof.ficha@exemplo.com");
+  });
 });

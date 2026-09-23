@@ -386,7 +386,7 @@ export async function setTeacherActive(ctx: ServiceContext, id: string, active: 
 /** Lista com nome, cursos habilitados e carga semanal (aulas por semana nas turmas ativas). */
 export async function listTeachers(ctx: ServiceContext) {
   const rows = await ctx.db
-    .select({ teacher, person })
+    .select({ teacher, person, email: primaryEmailSql })
     .from(teacher)
     .innerJoin(person, eq(person.id, teacher.personId))
     .where(eq(teacher.tenantId, ctx.tenantId))
@@ -402,9 +402,9 @@ export async function listTeachers(ctx: ServiceContext) {
     .innerJoin(classGroup, eq(classGroup.id, classSchedule.classGroupId))
     .where(and(eq(classGroup.tenantId, ctx.tenantId), isNull(classGroup.deactivatedAt), sql`${classGroup.endsOn} >= ${ctx.now.toISOString().slice(0, 10)}`))
     .groupBy(classGroup.teacherId);
-  return rows.map(({ teacher: t, person: p }) => ({
+  return rows.map(({ teacher: t, person: p, email }) => ({
     ...t,
-    person: p,
+    person: { ...p, email },
     courses: courses.filter((c) => c.teacherId === t.id),
     weeklyLoad: load.find((l) => l.teacherId === t.id)?.lessons ?? 0,
   }));

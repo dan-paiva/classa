@@ -133,7 +133,9 @@ export const peopleRoutes = new Hono<AppEnv>()
     const id = uuid.safeParse(c.req.param("id"));
     if (!id.success) throw invalid("id", "Aluno não encontrado");
     const s = await getStudentRow(ctx.db, ctx, id.data);
-    const [p] = await ctx.db.select().from(person).where(eq(person.id, s.personId));
+    // o e-mail mora em person_email desde o item 11: sem isto a ficha saía sem e-mail
+    const [row] = await ctx.db.select({ person, email: primaryEmailSql }).from(person).where(eq(person.id, s.personId));
+    const p = row ? { ...row.person, email: row.email } : undefined;
     const [co] = s.companyId ? await ctx.db.select({ id: company.id, name: company.name, model: company.model }).from(company).where(eq(company.id, s.companyId)) : [];
     const enrollments = await listEnrollments(ctx, { studentId: s.id });
     const installments = await listInstallments(ctx, { studentId: s.id });
