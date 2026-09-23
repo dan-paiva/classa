@@ -89,12 +89,14 @@ describe("open-entry", () => {
         startsOn: hoje, endsOn: daqui90, schedules: [{ weekday: 3, startTime: "08:00" }], generateWeeks: 4,
       }),
     );
-    const aulas = await body<{ lessons: { id: string }[] }>(await admin.json(`/class-groups/${oferta.classGroup.id}`));
-    const alvo = aulas.lessons[0]!.id;
     const a = await aluno("Primeiro da Fila");
     const b = await aluno("Segundo da Fila");
     const ea = await matriculaOpen(a.id, n1);
     const eb = await matriculaOpen(b.id, n1);
+    // pela listagem de vagas, e não pela primeira aula da turma: se o teste
+    // roda numa quarta, a aula de hoje já está dentro da janela de reserva
+    const { slots } = await body<{ slots: Slot[] }>(await admin.json(`/enrollments/${ea.enrollment.id}/vagas`));
+    const alvo = slots.find((x) => x.className === "Open N1 · qua 08h (1 vaga)")!.id;
     await body(await admin.json(`/enrollments/${ea.enrollment.id}/vagas/${alvo}`, "POST"));
     const cheio = await admin.json(`/enrollments/${eb.enrollment.id}/vagas/${alvo}`, "POST");
     expect(cheio.status).toBe(422);
