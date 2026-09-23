@@ -520,7 +520,7 @@ Saídas alternativas — é aqui que o fluxo real costuma vazar:
 
 - **Perdido** (Comercial, exige motivo): a qualquer momento. A pessoa fica; o lead sai do funil.
 - **Não compareceu** (Pedagógico): marca o nivelamento como não comparecido, devolve o card para a etapa 2 e conta a falta. Os efeitos da etapa 3 em diante voltam a rodar quando o card for remarcado, com o nivelamento novo. Na terceira, vai para *Perdido* com motivo "sem resposta" (**decisão D17**).
-- **Sem vaga na semana pedida** (Pedagógico): o card fica na etapa 2 com a próxima data possível anotada, e o comercial vê para renegociar.
+- **Sem vaga na semana pedida** (Pedagógico): o card fica na etapa 2 com a próxima data possível anotada e registrada no histórico, e o comercial vê para renegociar.
 
 Uma regra vale para o fluxo inteiro: **o nivelamento pode ser agendado para quem ainda é lead**. É a única exceção de 5.8, e é o que permite nivelar antes de matricular.
 
@@ -623,7 +623,7 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 | D13 | Antecedência mínima para reservar aula open-entry | A mesma janela de cancelamento do curso |
 | D14 | Trocar de nível cancela reserva futura no módulo antigo? | Não; mantém e avisa o aluno |
 | D15 | Créditos somam entre matrículas do mesmo aluno? | Não; saldo é por matrícula |
-| D16 | Que área matricula no fim do fluxo de entrada? | Administrativo, configurável por escola |
+| D16 | Que área matricula no fim do fluxo de entrada? | Administrativo, configurável por escola em Configurações → Fluxos (fica com as etapas Matrícula e Concluída) |
 | D17 | Quantas faltas no nivelamento até perder o lead? | Três; depois vai a `perdido` com motivo "sem resposta" |
 
 ## Ordem de construção

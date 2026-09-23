@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { LEAD_LOST_REASONS, LEAD_ORIGINS, LEAD_STAGE_LABELS } from "@classa/domain";
+import { FLOWS, LEAD_LOST_REASONS, LEAD_ORIGINS, LEAD_STAGE_LABELS } from "@classa/domain";
 import { useState } from "react";
 import { api, issuesOf } from "../api.ts";
 import { school, type Lead } from "../api-school.ts";
 import { formatPhone } from "../lib/format.ts";
+import { useCan } from "../lib/permissions.ts";
 import { ActionError, Badge, Field, FormError, LoadError, Loading, PageHead, Stat } from "../ui.tsx";
 
 const OPEN = ["captado", "contato", "nivelamento", "proposta"] as const;
@@ -96,6 +97,7 @@ export function Leads() {
 
 function LeadCard({ slug, lead: l, canAdvance, act, busy }: { slug: string; lead: Lead; canAdvance: boolean; act: (fn: () => Promise<unknown>) => void; busy: boolean }) {
   const [losing, setLosing] = useState(false);
+  const canStartEntry = useCan("fluxo:com", "operar");
   return (
     <div className={`kcard${l.stalled ? " kcard-warn" : ""}`}>
       <strong>{l.name}</strong>
@@ -108,6 +110,18 @@ function LeadCard({ slug, lead: l, canAdvance, act, busy }: { slug: string; lead
         {l.stalled && <Badge tone="warn">Parada</Badge>}
         {l.temperature && <Badge tone={l.temperature === "quente" ? "danger" : l.temperature === "morno" ? "warn" : "info"}>{l.temperature}</Badge>}
       </span>
+      {/* a entrada do aluno leva o lead do nivelamento até a matrícula (DOMINIO.md §7.5.1) */}
+      {l.entry ? (
+        <Link to="/e/$slug/acoes" params={{ slug }} search={{ fluxo: "entrada", card: l.entry.cardId }} className="small">
+          Entrada: {FLOWS.entrada.stages.find((s) => s.key === l.entry!.stage)?.label ?? l.entry.stage}
+        </Link>
+      ) : (
+        canStartEntry && (
+          <Link to="/e/$slug/acoes" params={{ slug }} search={{ fluxo: "entrada", lead: l.id }} className="small">
+            Iniciar entrada (nivelamento e matrícula)
+          </Link>
+        )
+      )}
       {losing ? (
         <select aria-label="Motivo da perda" defaultValue="" onChange={(e) => e.target.value && act(() => school.moveLead(slug, l.id, { to: "perdido", reason: e.target.value }))}>
           <option value="">Motivo da perda…</option>

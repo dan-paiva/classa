@@ -347,6 +347,8 @@ export type PayrollPeriod = { id: string; month: string; closedAt: string; netCe
 
 export type Lead = {
   id: string;
+  /** Card do fluxo de entrada do aluno, se já começou. */
+  entry: { cardId: string; stage: string } | null;
   /** A pessoa nasce na captação e o id acompanha até depois de virar aluno. */
   personId: string;
   name: string;
@@ -644,7 +646,8 @@ export const school = {
   moveLead: (slug: string, id: string, body: { to: "avancar" } | { to: "perdido"; reason: string } | { to: "reabrir" }) => request<{ lead: Lead }>(`${t(slug)}/leads/${id}/move`, post(body)),
   convertLead: (slug: string, id: string) => request<{ lead: Lead }>(`${t(slug)}/leads/${id}/convert`, post()),
 
-  flows: (slug: string) => request<{ openCounts: Record<string, number> }>(`${t(slug)}/flows`),
+  flows: (slug: string) => request<{ openCounts: Record<string, number>; stageAreas: Record<string, Record<string, string>> }>(`${t(slug)}/flows`),
+  saveFlowSettings: (slug: string, input: { entryEnrollmentArea: string }) => request(`${t(slug)}/settings/flows`, patch(input)),
   cards: (slug: string, flow: string) => request<{ cards: WorkflowCard[] }>(`${t(slug)}/flows/${flow}/cards`),
   flowOptions: (slug: string, flow: string) => request<{ options: FlowOptions }>(`${t(slug)}/flows/${flow}/options`),
   renewalQueue: (slug: string) => request<{ queue: RenewalItem[] }>(`${t(slug)}/renewal-queue`),
@@ -653,6 +656,7 @@ export const school = {
   updateCard: (slug: string, id: string, data: Record<string, unknown>) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}`, patch({ data })),
   moveCard: (slug: string, id: string, to: string, note?: string) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}/move`, post({ to, note })),
   entryNoShow: (slug: string, id: string) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}/no-show`, post()),
+  entryNoSlot: (slug: string, id: string, nextPossibleOn: string) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}/no-slot`, post({ nextPossibleOn })),
 
   agenda: (slug: string, filters: AgendaFilters) => request<{ items: AgendaItem[] }>(`${t(slug)}/agenda${qs(filters)}`),
   agendaPeople: (slug: string) => request<{ people: AgendaPerson[] }>(`${t(slug)}/agenda/people`),

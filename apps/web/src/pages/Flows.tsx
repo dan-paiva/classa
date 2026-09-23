@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import {
   AREA_LABELS,
   CAMPAIGN_CHANNELS,
@@ -8,11 +8,12 @@ import {
   RETENTION_REASONS,
   stageArea,
   SUBSTITUTION_REASONS,
+  type Area,
   type FlowDefinition,
   type FlowField,
   type FlowKey,
 } from "@classa/domain";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, issuesOf } from "../api.ts";
 import { PAYMENT_METHOD_LABELS, school, type FlowOptions, type WorkflowCard } from "../api-school.ts";
 import { fmtDate, fmtIsoDate, fmtShortDate, fmtTime, money, parseReais } from "../lib/format.ts";
@@ -170,6 +171,15 @@ function FieldInput({ field, value, onChange, options, disabled }: { field: Flow
   }
 }
 
+/**
+ * Área de cada etapa nesta escola. Vem da API porque a escola pode mudar
+ * algumas (D16: quem matricula na entrada); sem resposta ainda, vale a definição.
+ */
+function useAreaOf(slug: string, def: FlowDefinition) {
+  const flows = useQuery({ queryKey: ["flows", slug], queryFn: () => school.flows(slug) });
+  return (stage: string) => (flows.data?.stageAreas[def.key]?.[stage] as Area | undefined) ?? stageArea(def, stage);
+}
+
 /** Na criação da entrada, só os campos da primeira etapa; o resto se preenche no caminho. */
 function createFields(def: FlowDefinition) {
   if (def.key !== "entrada") return def.fields;
@@ -201,10 +211,12 @@ function useAreaOperate(): Record<string, boolean> {
 
 export function Flows() {
   const { slug } = useParams({ strict: false }) as { slug: string };
+  // links de outras telas: ?fluxo=entrada&lead=… abre o formulário; &card=… abre o card
+  const search = useSearch({ strict: false }) as { fluxo?: string; lead?: string; card?: string };
   const counts = useQuery({ queryKey: ["flows", slug], queryFn: () => school.flows(slug) });
   // o servidor devolve só os fluxos que o perfil vê (por alguma das áreas das etapas)
   const visible = Object.values(FLOWS).filter((f) => !counts.data || f.key in counts.data.openCounts);
-  const [picked, setFlow] = useState<FlowKey | null>(null);
+  const [picked, setFlow] = useState<FlowKey | null>(search.fluxo && search.fluxo in FLOWS ? (search.fluxo as FlowKey) : null);
   const flow = picked && visible.some((f) => f.key === picked) ? picked : (visible[0]?.key ?? "entrada");
   const def = FLOWS[flow];
 
@@ -219,18 +231,25 @@ export function Flows() {
           </button>
         ))}
       </div>
-      <FlowBoard key={flow} slug={slug} def={def} />
+      <FlowBoard
+        key={flow}
+        slug={slug}
+        def={def}
+        initialLeadId={flow === search.fluxo ? search.lead : undefined}
+        initialCardId={flow === search.fluxo ? search.card : undefined}
+      />
     </div>
   );
 }
 
-function FlowBoard({ slug, def }: { slug: string; def: FlowDefinition }) {
+function FlowBoard({ slug, def, initialLeadId, initialCardId }: { slug: string; def: FlowDefinition; initialLeadId?: string; initialCardId?: string }) {
   const qc = useQueryClient();
   const cards = useQuery({ queryKey: ["cards", slug, def.key], queryFn: () => school.cards(slug, def.key) });
-  const [creating, setCreating] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(!!initialLeadId);
+  const [openId, setOpenId] = useState<string | null>(initialCardId ?? null);
   const multiArea = def.stages.some((s) => s.area);
-  const canCreate = useCan(`fluxo:${stageArea(def, def.stages[0]!.key)}`, "operar");
+  const areaOf = useAreaOf(slug, def);
+  const canCreate = useCan(`fluxo:${areaOf(def.stages[0]!.key)}`, "operar");
   const refresh = () =>
     Promise.all([
       qc.invalidateQueries({ queryKey: ["cards", slug, def.key] }),
@@ -252,7 +271,7 @@ function FlowBoard({ slug, def }: { slug: string; def: FlowDefinition }) {
           </button>
         )}
       </div>
-      {creating && <CardForm slug={slug} def={def} onDone={() => setCreating(false)} onCreated={refresh} />}
+      {creating && <CardForm slug={slug} def={def} initialLeadId={initialLeadId} onDone={() => setCreating(false)} onCreated={refresh} />}
       {def.key === "renovacao" && <RenewalQueue slug={slug} onCreated={refresh} />}
       {cards.isPending ? (
         <Loading />
@@ -265,7 +284,7 @@ function FlowBoard({ slug, def }: { slug: string; def: FlowDefinition }) {
                 <h3 title={stage.description}>
                   {stage.label} <span className="muted">{list.length}</span>
                 </h3>
-                {multiArea && <span className="small area-tag">{AREA_LABELS[stageArea(def, stage.key)]}</span>}
+                {multiArea && <span className="small area-tag">{AREA_LABELS[areaOf(stage.key)]}</span>}
                 <p className="muted small">{stage.description}</p>
                 {list.map((c) => (
                   <button
@@ -276,7 +295,7 @@ function FlowBoard({ slug, def }: { slug: string; def: FlowDefinition }) {
                   >
                     <strong>{c.title}</strong>
                     <span className="muted small">desde {fmtDate(c.stageChangedAt)}</span>
-                    {c.canOperate === false && !stage.final && <span className="muted small">acompanhando · está com {AREA_LABELS[stageArea(def, stage.key)]}</span>}
+                    {c.canOperate === false && !stage.final && <span className="muted small">acompanhando · está com {AREA_LABELS[areaOf(stage.key)]}</span>}
                     {typeof c.data.noShows === "number" && c.data.noShows > 0 && <Badge tone="warn">{`${c.data.noShows} falta(s) no nivelamento`}</Badge>}
                     {typeof c.data.nextPossibleOn === "string" && c.stage === "a_marcar" && <Badge tone="info">{`sem vaga · próxima ${fmtIsoDate(c.data.nextPossibleOn)}`}</Badge>}
                     {typeof c.data.overdueCents === "number" && <Badge tone="danger">{money(c.data.overdueCents)}</Badge>}
@@ -292,10 +311,27 @@ function FlowBoard({ slug, def }: { slug: string; def: FlowDefinition }) {
   );
 }
 
-function CardForm({ slug, def, onDone, onCreated }: { slug: string; def: FlowDefinition; onDone: () => void; onCreated: () => Promise<unknown> }) {
-  const [data, setData] = useState<Record<string, unknown>>({});
+function CardForm({
+  slug,
+  def,
+  initialLeadId,
+  onDone,
+  onCreated,
+}: {
+  slug: string;
+  def: FlowDefinition;
+  initialLeadId?: string;
+  onDone: () => void;
+  onCreated: () => Promise<unknown>;
+}) {
+  const [data, setData] = useState<Record<string, unknown>>(initialLeadId ? { leadId: initialLeadId } : {});
   const optionsFor = useFieldOptions(slug, def.key);
   const leads = useQuery({ queryKey: ["flow-options", slug, def.key], queryFn: () => school.flowOptions(slug, def.key), enabled: def.key === "entrada" });
+  // veio da tela de Leads: quando a lista chega, traz CPF, e-mail e curso do lead escolhido
+  const leadList = leads.data?.options.leads;
+  useEffect(() => {
+    if (initialLeadId && leadList) setData((d) => prefill(def, "leadId", initialLeadId, d, leadList));
+  }, [initialLeadId, leadList, def]);
   const create = useMutation({
     mutationFn: () => school.createCard(slug, def.key, data),
     onSuccess: async () => {
@@ -338,7 +374,10 @@ function CardPanel({ slug, def, cardId, onChange, onClose }: { slug: string; def
   const q = useQuery({ queryKey: ["card", slug, cardId], queryFn: () => school.card(slug, cardId) });
   const optionsFor = useFieldOptions(slug, def.key);
   const canArea = useAreaOperate();
+  const areaOf = useAreaOf(slug, def);
   const noShow = useMutation({ mutationFn: () => school.entryNoShow(slug, cardId), onSuccess: async () => { setDraft(null); await onChange(); } });
+  const [slotDate, setSlotDate] = useState("");
+  const noSlot = useMutation({ mutationFn: () => school.entryNoSlot(slug, cardId, slotDate), onSuccess: async () => { setSlotDate(""); await onChange(); } });
   const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
   const save = useMutation({ mutationFn: (d: Record<string, unknown>) => school.updateCard(slug, cardId, d), onSuccess: async () => { setDraft(null); await onChange(); } });
   const move = useMutation({
@@ -362,7 +401,7 @@ function CardPanel({ slug, def, cardId, onChange, onClose }: { slug: string; def
   const alternatives = def.stages.filter((s) => s.alternative && s.key !== card.stage);
   const label = (key: string | null) => def.stages.find((s) => s.key === key)?.label ?? "—";
   const locked = current.final || !canOperate;
-  const altAllowed = (key: string) => canOperate || canArea[stageArea(def, key)];
+  const altAllowed = (key: string) => canOperate || canArea[areaOf(key)];
 
   return (
     <section className="panel stack card-panel">
@@ -376,7 +415,7 @@ function CardPanel({ slug, def, cardId, onChange, onClose }: { slug: string; def
         <Badge tone={current.final ? (current.alternative ? "muted" : "ok") : "info"}>{current.label}</Badge> <span className="muted small">{current.description}</span>
       </p>
       {!current.final && !canOperate && (
-        <p className="muted small">Você acompanha este card porque ele passou pela sua área. Agora quem move é {AREA_LABELS[stageArea(def, card.stage)]}.</p>
+        <p className="muted small">Você acompanha este card porque ele passou pela sua área. Agora quem move é {AREA_LABELS[areaOf(card.stage)]}.</p>
       )}
       {def.key === "entrada" && typeof card.data.eventId === "string" && (
         <p className="small">
@@ -412,12 +451,12 @@ function CardPanel({ slug, def, cardId, onChange, onClose }: { slug: string; def
             Salvar campos
           </button>
         )}
-        {!current.final && next && (canOperate || canArea[stageArea(def, next.key)]) && (
+        {!current.final && next && (canOperate || canArea[areaOf(next.key)]) && (
           <button type="button" className="btn btn-primary" disabled={move.isPending} onClick={() => move.mutate(next.key)}>
             Mover para {next.label}
           </button>
         )}
-        {def.key === "entrada" && (card.stage === "marcado" || card.stage === "comunicada") && canArea[stageArea(def, "marcado")] && (
+        {def.key === "entrada" && (card.stage === "marcado" || card.stage === "comunicada") && canArea[areaOf("marcado")] && (
           <button type="button" className="btn" disabled={noShow.isPending} onClick={() => confirm("Registrar que não compareceu ao nivelamento?") && noShow.mutate()}>
             Não compareceu
           </button>
@@ -428,7 +467,7 @@ function CardPanel({ slug, def, cardId, onChange, onClose }: { slug: string; def
               {a.label}
             </button>
           ))}
-        {!current.final && canArea[stageArea(def, card.stage)] && (
+        {!current.final && canArea[areaOf(card.stage)] && (
           <select aria-label="Mover para outra etapa" value="" onChange={(e) => e.target.value && move.mutate(e.target.value)} className="select-auto">
             <option value="">Ir para etapa…</option>
             {def.stages
@@ -440,13 +479,28 @@ function CardPanel({ slug, def, cardId, onChange, onClose }: { slug: string; def
               ))}
           </select>
         )}
-        {current.final && canArea[stageArea(def, card.stage)] && (
+        {current.final && canArea[areaOf(card.stage)] && (
           <button type="button" className="btn" disabled={move.isPending} onClick={() => move.mutate(def.stages[0]!.key)}>
             Reabrir em {def.stages[0]!.label}
           </button>
         )}
       </div>
-      <ActionError error={move.error ?? save.error ?? noShow.error} />
+      {def.key === "entrada" && card.stage === "a_marcar" && canArea[areaOf("a_marcar")] && (
+        <div className="subpanel stack-sm">
+          <strong>Sem vaga na semana pedida?</strong>
+          <p className="muted small">Anote a próxima data possível. O card fica aqui e o comercial vê a data para renegociar com o lead.</p>
+          <div className="toolbar">
+            <label className="sr-only" htmlFor="slot-date">
+              Próxima data possível
+            </label>
+            <input id="slot-date" type="date" value={slotDate} onChange={(e) => setSlotDate(e.target.value)} />
+            <button type="button" className="btn" disabled={!slotDate || noSlot.isPending} onClick={() => noSlot.mutate()}>
+              Registrar sem vaga
+            </button>
+          </div>
+        </div>
+      )}
+      <ActionError error={move.error ?? save.error ?? noShow.error ?? noSlot.error} />
       <p className="muted small">Pular etapas executa o que cada etapa intermediária faz, em ordem. Voltar etapa não desfaz o que já foi feito.</p>
       <div className="stack-sm">
         <h3>Histórico</h3>

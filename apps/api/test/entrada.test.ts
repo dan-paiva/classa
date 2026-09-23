@@ -176,4 +176,55 @@ describe("entrada do aluno", () => {
     const leads = await body<{ leads: { id: string; stage: string; lostReason: string }[] }>(await admin.json("/leads"));
     expect(leads.leads.find((l) => l.id === lead.id)).toMatchObject({ stage: "perdido", lostReason: "Sem resposta" });
   });
+
+  it("sem vaga na semana pedida: fica em 'a marcar' com a próxima data, e o comercial vê", async () => {
+    const { card } = await newEntry("Lead Sem Vaga", "444555660");
+    // fora de "a marcar", não
+    expect((await ped(`/cards/${card.id}/no-slot`, "POST", { nextPossibleOn: "2099-01-10" })).status).toBe(422);
+    await body(await move(ped, card.id, "a_marcar"));
+    // o comercial não registra: é do pedagógico
+    expect((await com(`/cards/${card.id}/no-slot`, "POST", { nextPossibleOn: "2099-01-10" })).status).toBe(403);
+    expect((await ped(`/cards/${card.id}/no-slot`, "POST", { nextPossibleOn: "2000-01-10" })).status).toBe(400);
+    const { card: after } = await body<{ card: Card }>(await ped(`/cards/${card.id}/no-slot`, "POST", { nextPossibleOn: "2099-01-10" }));
+    expect(after).toMatchObject({ stage: "a_marcar", data: { nextPossibleOn: "2099-01-10" } });
+    const visto = (await board(com)).find((c) => c.id === card.id)!;
+    expect(visto.data.nextPossibleOn).toBe("2099-01-10");
+    const { transitions } = await body<{ transitions: { note: string | null }[] }>(await com(`/cards/${card.id}`));
+    expect(transitions.at(-1)!.note).toContain("Próxima data possível: 10/01/2099");
+  });
+
+  it("a lista de leads traz a entrada de cada um", async () => {
+    const { lead, card } = await newEntry("Lead Com Entrada", "777888990");
+    const { leads } = await body<{ leads: { id: string; entry: { cardId: string; stage: string } | null }[] }>(await com("/leads"));
+    expect(leads.find((l) => l.id === lead.id)!.entry).toEqual({ cardId: card.id, stage: "dados" });
+    expect(leads.find((l) => l.id !== lead.id && l.entry === null)).toBeTruthy();
+  });
+});
+
+describe("área que matricula é da escola (D16)", () => {
+  it("o admin troca para o comercial, e o comercial passa a matricular", async () => {
+    const { card } = await newEntry("Lead D16", "321654980");
+    await body(await move(ped, card.id, "a_marcar"));
+    await body(await patch(ped, card.id, { levelingStartsAt: levelingAt.replace("T14", "T15"), evaluatorPersonId: avaliador }));
+    await body(await move(ped, card.id, "marcado"));
+    await body(await move(com, card.id, "comunicada"));
+    await body(await patch(ped, card.id, { suggestedModuleId: n1 }));
+    await body(await move(ped, card.id, "nivelado"));
+
+    // padrão: administrativo puxa, comercial não
+    expect((await board(adm)).some((c) => c.id === card.id)).toBe(true);
+
+    expect((await com("/settings/flows", "PATCH", { entryEnrollmentArea: "com" })).status).toBe(403); // só o admin configura
+    await body(await admin.json("/settings/flows", "PATCH", { entryEnrollmentArea: "com" }));
+    const { stageAreas } = await body<{ stageAreas: Record<string, Record<string, string>> }>(await admin.json("/flows"));
+    expect(stageAreas.entrada).toMatchObject({ matricula: "com", concluida: "com", dados: "com", marcado: "ped" });
+
+    // o administrativo não tem mais etapa nenhuma na entrada: o fluxo some para ele
+    expect((await adm("/flows/entrada/cards")).status).toBe(403);
+    await body(await patch(com, card.id, { regime: "open_entry" }));
+    const { card: matriculado } = await body<{ card: Card }>(await move(com, card.id, "matricula"));
+    expect(matriculado.data.enrollmentId).toBeTruthy();
+
+    await body(await admin.json("/settings/flows", "PATCH", { entryEnrollmentArea: "adm" }));
+  });
 });

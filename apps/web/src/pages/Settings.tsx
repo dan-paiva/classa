@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { useState } from "react";
+import { AREA_LABELS, AREAS } from "@classa/domain";
 import { issuesOf } from "../api.ts";
 import { ROOM_KIND_LABELS, school, type Room } from "../api-school.ts";
 import { fmtIsoDate, todayIso } from "../lib/format.ts";
@@ -17,6 +18,7 @@ export function Settings() {
         <Rooms slug={slug} />
         <Holidays slug={slug} />
       </div>
+      <FlowSettings slug={slug} />
     </div>
   );
 }
@@ -172,6 +174,32 @@ function Holidays({ slug }: { slug: string }) {
         </button>
         <p className="muted small">Aulas já geradas nesses dias não são removidas automaticamente; cancele-as pela agenda.</p>
       </form>
+    </section>
+  );
+}
+
+/** Decisão D16: que área matricula no fim da entrada do aluno. */
+function FlowSettings({ slug }: { slug: string }) {
+  const qc = useQueryClient();
+  const flows = useQuery({ queryKey: ["flows", slug], queryFn: () => school.flows(slug) });
+  const current = flows.data?.stageAreas.entrada?.matricula ?? "adm";
+  const save = useMutation({
+    mutationFn: (area: string) => school.saveFlowSettings(slug, { entryEnrollmentArea: area }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["flows", slug] }),
+  });
+  return (
+    <section className="panel stack">
+      <h2>Fluxos</h2>
+      <Field label="Quem matricula no fim da entrada do aluno" htmlFor="entry-area" hint="Essa área recebe o card depois do nivelamento, converte o lead em aluno e abre a matrícula.">
+        <select id="entry-area" value={current} disabled={flows.isPending || save.isPending} onChange={(e) => save.mutate(e.target.value)}>
+          {AREAS.map((a) => (
+            <option key={a} value={a}>
+              {AREA_LABELS[a]}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <FormError error={save.error} />
     </section>
   );
 }

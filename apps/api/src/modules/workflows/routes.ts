@@ -1,10 +1,12 @@
-import { FLOWS, flowAreas, LEAD_LOST_REASONS, nextStage, stageArea, type Area, type FlowDefinition, type FlowKey } from "@classa/domain";
+import { AREAS, FLOWS, flowAreas, LEAD_LOST_REASONS, nextStage, stageArea, stageOverrides, type Area, type FlowDefinition, type FlowKey } from "@classa/domain";
+import { eq, tenant } from "@classa/db";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
 import { DomainError } from "../../http/errors.ts";
 import { isoDate, uuid } from "../../http/query.ts";
-import {authorize, hasPermission} from "../../http/require-tenant.ts";
+import { authorize, hasPermission, requireAdmin } from "../../http/require-tenant.ts";
+import { audit } from "../../http/audit.ts";
 import type { Context } from "hono";
 import { parseBody } from "../../http/validation.ts";
 import { contextFrom } from "../../services/context.ts";
@@ -14,6 +16,7 @@ import {
   createCard,
   createLead,
   entryNoShow,
+  entryNoSlot,
   flowCounts,
   flowOptions,
   listCards,
@@ -58,22 +61,24 @@ function flowDef(flow: string): FlowDefinition {
   if (!def) throw new DomainError(404, "not_found", "Fluxo inexistente.");
   return def;
 }
-const canSeeFlow = (c: Env, def: FlowDefinition) => flowAreas(def).some((a) => areaCan(c, a, "ver"));
+/** Área de cada etapa nesta escola: a definição do fluxo com o que a escola escolheu por cima (D16). */
+const areaOf = (c: Env, def: FlowDefinition, stage: string) => stageArea(def, stage, stageOverrides(def.key, c.var.tenant.settings));
+const canSeeFlow = (c: Env, def: FlowDefinition) => flowAreas(def, stageOverrides(def.key, c.var.tenant.settings)).some((a) => areaCan(c, a, "ver"));
 
 type CardLike = { flow: string; stage: string; visited?: string[] };
 function cardAccess(c: Env, card: CardLike) {
   const def = flowDef(card.flow);
-  const current = stageArea(def, card.stage);
+  const current = areaOf(c, def, card.stage);
   const next = nextStage(def, card.stage);
-  const nextArea = next ? stageArea(def, next.key) : null;
-  const seen = [current, ...(nextArea ? [nextArea] : []), ...(card.visited ?? []).map((s) => stageArea(def, s))];
+  const nextArea = next ? areaOf(c, def, next.key) : null;
+  const seen = [current, ...(nextArea ? [nextArea] : []), ...(card.visited ?? []).map((s) => areaOf(c, def, s))];
   const owner = areaCan(c, current, "operar");
   const puller = !!nextArea && areaCan(c, nextArea, "operar");
   const moveTo = (to: string) => {
     if (owner) return true;
     if (puller && to === next!.key) return true;
     const target = def.stages.find((s) => s.key === to);
-    return !!target?.alternative && areaCan(c, stageArea(def, to), "operar");
+    return !!target?.alternative && areaCan(c, areaOf(c, def, to), "operar");
   };
   return { def, see: seen.some((a) => areaCan(c, a, "ver")), operate: owner || puller, moveTo };
 }
@@ -111,7 +116,23 @@ export const workflowRoutes = new Hono<AppEnv>()
   .get("/flows", async (c) => {
     const counts = await flowCounts(contextFrom(c));
     const visible = Object.values(FLOWS).filter((f) => canSeeFlow(c, f));
-    return c.json({ flows: visible, openCounts: Object.fromEntries(visible.map((f) => [f.key, counts[f.key] ?? 0])) });
+    return c.json({
+      flows: visible,
+      openCounts: Object.fromEntries(visible.map((f) => [f.key, counts[f.key] ?? 0])),
+      // a tela precisa saber de quem é cada etapa nesta escola
+      stageAreas: Object.fromEntries(visible.map((f) => [f.key, Object.fromEntries(f.stages.map((st) => [st.key, areaOf(c, f, st.key)]))])),
+    });
+  })
+  /* configuração dos fluxos da escola: por ora, a área que matricula na entrada (D16) */
+  .patch("/settings/flows", requireAdmin, async (c) => {
+    const { data, error } = await parseBody(c, z.object({ entryEnrollmentArea: z.enum(AREAS, { error: "Escolha a área" }) }));
+    if (error) return error;
+    const t = c.var.tenant;
+    const before = t.settings;
+    const settings = { ...before, flows: { ...before.flows, entryEnrollmentArea: data.entryEnrollmentArea } };
+    await c.var.db.update(tenant).set({ settings }).where(eq(tenant.id, t.id));
+    await audit(c.var.db, { tenantId: t.id, actorId: c.var.user?.id ?? null, entity: "tenant", entityId: t.id, action: "update", before: { flows: before.flows ?? null }, after: { flows: settings.flows } });
+    return c.json({ flows: settings.flows });
   })
   .get("/flows/:flow/cards", async (c) => {
     if (!canSeeFlow(c, flowDef(c.req.param("flow")))) return denied(c);
@@ -129,7 +150,7 @@ export const workflowRoutes = new Hono<AppEnv>()
   .get("/renewal-queue", async (c) => (canSeeFlow(c, FLOWS.renovacao) ? c.json({ queue: await renewalQueue(contextFrom(c)) }) : denied(c)))
   .post("/flows/:flow/cards", async (c) => {
     const def = flowDef(c.req.param("flow"));
-    if (!areaCan(c, stageArea(def, def.stages[0]!.key), "operar")) return denied(c);
+    if (!areaCan(c, areaOf(c, def, def.stages[0]!.key), "operar")) return denied(c);
     const { data, error } = await parseBody(c, z.object({ data: z.record(z.string(), z.unknown()) }));
     if (error) return error;
     return c.json({ card: await createCard(contextFrom(c), def.key, data.data) }, 201);
@@ -160,6 +181,15 @@ export const workflowRoutes = new Hono<AppEnv>()
   .post("/cards/:id/no-show", async (c) => {
     const ctx = contextFrom(c);
     const { card } = await cardDetail(ctx, c.req.param("id"));
-    if (card.flow !== "entrada" || !areaCan(c, stageArea(FLOWS.entrada, "marcado"), "operar")) return denied(c);
+    if (card.flow !== "entrada" || !areaCan(c, areaOf(c, FLOWS.entrada, "marcado"), "operar")) return denied(c);
     return c.json({ card: await entryNoShow(ctx, card.id) });
+  })
+  // sem vaga: também é do pedagógico, dono de "a marcar"
+  .post("/cards/:id/no-slot", async (c) => {
+    const ctx = contextFrom(c);
+    const { card } = await cardDetail(ctx, c.req.param("id"));
+    if (card.flow !== "entrada" || !areaCan(c, areaOf(c, FLOWS.entrada, "a_marcar"), "operar")) return denied(c);
+    const { data, error } = await parseBody(c, z.object({ nextPossibleOn: isoDate }));
+    if (error) return error;
+    return c.json({ card: await entryNoSlot(ctx, card.id, data.nextPossibleOn) });
   });

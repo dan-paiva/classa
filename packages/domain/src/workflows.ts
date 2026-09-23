@@ -254,14 +254,28 @@ export function transitionPath(def: FlowDefinition, from: string, to: string): {
   return { ok: true, path: stages.slice(iFrom + 1, iTo + 1).filter((s) => !s.alternative) };
 }
 
-/** Área dona da etapa: a da própria etapa ou, sem ela, a do fluxo. */
-export function stageArea(def: FlowDefinition, stageKey: string): Area {
-  return def.stages.find((s) => s.key === stageKey)?.area ?? FLOW_AREA[def.key] ?? "adm";
+/** Área de etapa que a escola escolheu, por cima da definição (ex.: D16). Chave: etapa. */
+export type StageAreaOverrides = Partial<Record<string, Area>>;
+
+/** Área dona da etapa: a escolhida pela escola, a da própria etapa ou, sem elas, a do fluxo. */
+export function stageArea(def: FlowDefinition, stageKey: string, overrides?: StageAreaOverrides): Area {
+  return overrides?.[stageKey] ?? def.stages.find((s) => s.key === stageKey)?.area ?? FLOW_AREA[def.key] ?? "adm";
 }
 
 /** Todas as áreas que o fluxo atravessa. */
-export function flowAreas(def: FlowDefinition): Area[] {
-  return [...new Set(def.stages.map((s) => stageArea(def, s.key)))];
+export function flowAreas(def: FlowDefinition, overrides?: StageAreaOverrides): Area[] {
+  return [...new Set(def.stages.map((s) => stageArea(def, s.key, overrides)))];
+}
+
+/**
+ * Decisão D16: que área matricula no fim da entrada, configurável por escola.
+ * Ela fica com a etapa Matrícula e com a Concluída, que é quem fecha o card.
+ */
+export const DEFAULT_ENTRY_ENROLLMENT_AREA: Area = "adm";
+export function stageOverrides(flow: string, settings: { flows?: { entryEnrollmentArea?: Area } } | null | undefined): StageAreaOverrides | undefined {
+  if (flow !== "entrada") return undefined;
+  const area = settings?.flows?.entryEnrollmentArea ?? DEFAULT_ENTRY_ENROLLMENT_AREA;
+  return { matricula: area, concluida: area };
 }
 
 /** Próxima etapa do caminho principal (sem as alternativas), ou null na última. */

@@ -114,6 +114,11 @@ export type TenantSettings = {
     installments: number;
     dueDay: number;
   };
+  /** Opcional: escola sem o campo segue o padrão de cada decisão. */
+  flows?: {
+    /** Área que matricula no fim da entrada do aluno (decisão D16). Padrão: Administrativo. */
+    entryEnrollmentArea?: "adm" | "com" | "ped" | "aca" | "cx" | "fin" | "mkt";
+  };
 };
 
 export const DEFAULT_TENANT_SETTINGS: TenantSettings = {

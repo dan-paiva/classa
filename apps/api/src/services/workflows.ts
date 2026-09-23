@@ -463,6 +463,33 @@ export async function entryNoShow(ctx: ServiceContext, id: string) {
   return row!;
 }
 
+/**
+ * Sem vaga na semana pedida (§7.5.1): o card fica em "a marcar", com a próxima
+ * data possível anotada e registrada no histórico, para o comercial renegociar.
+ */
+export async function entryNoSlot(ctx: ServiceContext, id: string, nextPossibleOn: string) {
+  const card = await getCard(ctx, id);
+  if (card.flow !== "entrada") throw unprocessable("Só a entrada do aluno tem nivelamento.");
+  if (card.stage !== "a_marcar") throw unprocessable("Só dá para registrar falta de vaga com o nivelamento ainda a marcar.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nextPossibleOn)) throw invalid("nextPossibleOn", "Informe a próxima data possível");
+  if (nextPossibleOn < today(ctx)) throw invalid("nextPossibleOn", "A próxima data possível não pode ser no passado");
+  const [row] = await ctx.db
+    .update(workflowCard)
+    .set({ data: { ...card.data, nextPossibleOn } })
+    .where(eq(workflowCard.id, id))
+    .returning();
+  await ctx.db.insert(workflowTransition).values({
+    tenantId: ctx.tenantId,
+    cardId: id,
+    fromStage: card.stage,
+    toStage: card.stage,
+    actorId: ctx.actorId,
+    note: `Sem vaga na semana pedida. Próxima data possível: ${nextPossibleOn.split("-").reverse().join("/")}.`,
+  });
+  await audit(ctx.db, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "fluxo:entrada", entityId: id, action: "update", before: card, after: row });
+  return row!;
+}
+
 /** Cartões do fluxo, com as etapas por onde já passaram: quem passou continua vendo (§7.5). */
 export async function listCards(ctx: ServiceContext, flowKey: string) {
   const def = flowOf(flowKey);
@@ -662,7 +689,15 @@ export async function listLeads(ctx: ServiceContext) {
     .leftJoin(course, eq(course.id, lead.courseId))
     .where(eq(lead.tenantId, ctx.tenantId))
     .orderBy(desc(lead.stageChangedAt));
+  // entrada de cada lead, para a tela de Leads abrir o card (a mais recente vence)
+  const entries = await ctx.db
+    .select({ id: workflowCard.id, stage: workflowCard.stage, leadId: sql<string>`${workflowCard.data}->>'leadId'` })
+    .from(workflowCard)
+    .where(and(eq(workflowCard.tenantId, ctx.tenantId), eq(workflowCard.flow, "entrada")))
+    .orderBy(asc(workflowCard.createdAt));
+  const entryOf = new Map(entries.map((e) => [e.leadId, { cardId: e.id, stage: e.stage }]));
   return rows.map((r) => ({
+    entry: entryOf.get(r.lead.id) ?? null,
     ...r.lead,
     name: r.name,
     cpf: r.cpf,
