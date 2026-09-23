@@ -40,6 +40,7 @@ const MAX_LEVEL: Record<Action, number> = { ver: 5, operar: 4, editar: 3, inativ
 
 export const RESOURCES = [
   "agenda",
+  "eventos",
   "cursos",
   "turmas",
   "alunos",
@@ -65,6 +66,8 @@ export type Resource = (typeof RESOURCES)[number];
 /** Áreas que permitem ver cada recurso. Recursos sem área são só do tipo Admin. */
 export const RESOURCE_AREAS: Record<Resource, readonly Area[]> = {
   agenda: AREAS,
+  // reunião, evento e nivelamento: qualquer área cria (DOMINIO.md §5.8)
+  eventos: AREAS,
   cursos: ["ped", "aca", "com", "cx", "mkt", "adm"],
   turmas: ["ped", "aca", "adm", "com", "cx"],
   alunos: ["aca", "adm", "com", "cx", "fin", "mkt"],

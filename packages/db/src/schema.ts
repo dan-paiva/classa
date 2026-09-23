@@ -910,6 +910,67 @@ export const companyCharge = pgTable(
 );
 
 /* ---------------------------------------------------------------------------
+ * Eventos, reuniões e nivelamentos (DOMINIO.md §5.8). Ficam fora de `lesson`
+ * porque não têm folha, crédito nem presença; a agenda geral lê as duas.
+ * ------------------------------------------------------------------------- */
+
+export const AGENDA_EVENT_KINDS = ["reuniao", "evento", "nivelamento"] as const;
+export type AgendaEventKind = (typeof AGENDA_EVENT_KINDS)[number];
+export const AGENDA_EVENT_STATES = ["agendado", "realizado", "nao_compareceu", "cancelado"] as const;
+export type AgendaEventState = (typeof AGENDA_EVENT_STATES)[number];
+
+export const agendaEvent = pgTable(
+  "agenda_event",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    kind: text("kind", { enum: AGENDA_EVENT_KINDS }).notNull(),
+    title: text("title").notNull(),
+    startsAt: tstz("starts_at").notNull(),
+    endsAt: tstz("ends_at").notNull(),
+    /** Endereço, sala ou link da chamada. */
+    location: text("location"),
+    notes: text("notes"),
+    state: text("state", { enum: AGENDA_EVENT_STATES }).notNull().default("agendado"),
+    cancelReason: text("cancel_reason"),
+    /** Nivelamento: quem é avaliado. Pode ser lead, por isso aponta para a pessoa. */
+    evaluatedPersonId: uuid("evaluated_person_id").references(() => person.id),
+    evaluatorPersonId: uuid("evaluator_person_id").references(() => person.id),
+    courseId: uuid("course_id").references(() => course.id),
+    /** Resultado do nivelamento: alimenta a decisão, não matricula ninguém. */
+    suggestedModuleId: uuid("suggested_module_id").references(() => courseModule.id),
+    resultNotes: text("result_notes"),
+    createdBy: text("created_by"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check("agenda_event_period", sql`${t.endsAt} > ${t.startsAt}`),
+    check("agenda_event_leveling", sql`${t.kind} <> 'nivelamento' or ${t.evaluatedPersonId} is not null`),
+    index("agenda_event_tenant_starts_idx").on(t.tenantId, t.startsAt),
+  ],
+);
+
+/** Participantes por pessoa: colaborador, professor, aluno e lead entram do mesmo jeito. */
+export const agendaEventParticipant = pgTable(
+  "agenda_event_participant",
+  {
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    eventId: uuid("event_id")
+      .notNull()
+      .references(() => agendaEvent.id, { onDelete: "cascade" }),
+    personId: uuid("person_id")
+      .notNull()
+      .references(() => person.id),
+  },
+  (t) => [primaryKey({ columns: [t.eventId, t.personId] }), index("agenda_event_participant_person_idx").on(t.personId)],
+);
+
+/* ---------------------------------------------------------------------------
  * Comercial e operação: leads e fluxos em kanban
  * ------------------------------------------------------------------------- */
 
