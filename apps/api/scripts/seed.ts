@@ -3,7 +3,11 @@
  *
  *   pnpm db:seed                       # cria a escola "demo" (falha se já existir)
  *   pnpm db:seed --reset               # apaga a escola "demo" e cria de novo
- *   pnpm db:seed --member voce@x.com   # também dá acesso de admin a um usuário que já existe
+ *   pnpm db:seed --member voce@x.com   # também dá acesso de admin a quem já tem conta (vários: separados por vírgula)
+ *   pnpm db:seed --slug inmula --name "Escola Inmula"   # outra escola de teste, com contas em @inmula.classa.dev
+ *
+ * As contas de cada perfil usam a senha classa-demo-123 no Postgres local. Fora dele,
+ * a senha é sorteada (ou a de --password) e só aparece no fim da execução.
  *
  * Tudo passa pelos serviços da API, então as regras (vagas, disponibilidade, choque de
  * horário, créditos, parcelas) valem aqui também. Recusa rodar fora do Postgres local
@@ -38,7 +42,15 @@ import { createClassGroup, generateLessons, importNationalHolidays } from "../sr
 import { convertLead, createCard, createLead, flowOptions, moveCard, moveLead, updateCard } from "../src/services/workflows.ts";
 import { setPersonEmail } from "../src/services/people.ts";
 
-const SLUG = "demo";
+const args0 = process.argv.slice(2);
+const opt0 = (name: string) => {
+  const i = args0.indexOf(name);
+  return i >= 0 ? args0[i + 1] : undefined;
+};
+const SLUG = opt0("--slug") ?? "demo";
+const SCHOOL_NAME = opt0("--name") ?? "Escola Demo";
+/** Domínio das contas de cada perfil: admin@demo.classa.dev, coordenacao@inmula.classa.dev… */
+const ACCOUNT_DOMAIN = `${SLUG}.classa.dev`;
 const TZ = "America/Sao_Paulo";
 const args = process.argv.slice(2);
 const flag = (name: string) => args.includes(name);
@@ -97,7 +109,7 @@ async function resetDemo(db: Database) {
     await db.execute(sql.raw(`delete from ${table} where tenant_id = '${id}'`));
   }
   await db.delete(tenant).where(eq(tenant.id, id));
-  log("escola demo anterior apagada");
+  log(`escola "${SLUG}" anterior apagada`);
 }
 
 async function main() {
@@ -105,36 +117,40 @@ async function main() {
   if (!/@(localhost|127\.0\.0\.1)[:/]/.test(url) && !flag("--allow-remote")) {
     throw new Error("O seed só roda no Postgres local. Use --allow-remote se tiver certeza.");
   }
+  const remote = !/@(localhost|127\.0\.0\.1)[:/]/.test(url);
+  // senha conhecida só no local: a do README não pode abrir uma escola publicada
+  const password = option("--password") ?? (remote ? `${crypto.randomUUID().slice(0, 8)}-${crypto.randomUUID().slice(0, 8)}` : "classa-demo-123");
   const { db, close } = createDb(url);
   try {
     if (flag("--reset")) await resetDemo(db);
     const [exists] = await db.select().from(tenant).where(eq(tenant.slug, SLUG));
-    if (exists) throw new Error('A escola "demo" já existe. Rode com --reset para recriar.');
+    if (exists) throw new Error(`A escola "${SLUG}" já existe. Rode com --reset para recriar.`);
 
     const realNow = new Date();
     const today = dateInZone(realNow, TZ);
 
     /* ---------------------------------------------------------- escola e acesso */
-    const [school] = await db.insert(tenant).values({ name: "Escola Demo", slug: SLUG, settings: DEFAULT_TENANT_SETTINGS }).returning();
+    // a escola de teste já vem com a aula private bônus ligada (DOMINIO.md §5.9.1)
+    const settings = { ...DEFAULT_TENANT_SETTINGS, bonus: { enabled: true, every: 5 } };
+    const [school] = await db.insert(tenant).values({ name: SCHOOL_NAME, slug: SLUG, settings }).returning();
     const auth = createAuth({ db, secret: "seed-local-nao-usado-em-producao-000000", baseURL: "http://localhost:8787" });
-    const demoEmail = "admin@demo.classa.dev";
+    const demoEmail = `admin@${ACCOUNT_DOMAIN}`;
     let [demoUser] = await db.select().from(authUser).where(eq(authUser.email, demoEmail));
     if (!demoUser) {
-      await auth.api.signUpEmail({ body: { email: demoEmail, password: "classa-demo-123", name: "Admin Demo" } });
+      await auth.api.signUpEmail({ body: { email: demoEmail, password, name: `Admin ${SCHOOL_NAME}` } });
       [demoUser] = await db.select().from(authUser).where(eq(authUser.email, demoEmail));
     }
     await db.insert(membership).values({ tenantId: school!.id, userId: demoUser!.id, role: "admin" });
-    const member = option("--member");
-    if (member) {
-      const [u] = await db.select().from(authUser).where(eq(authUser.email, member.toLowerCase()));
+    for (const member of (option("--member") ?? "").split(",").map((m: string) => m.trim().toLowerCase()).filter(Boolean)) {
+      const [u] = await db.select().from(authUser).where(eq(authUser.email, member));
       if (u) {
         await db.insert(membership).values({ tenantId: school!.id, userId: u.id, role: "admin" }).onConflictDoNothing();
-        log(`${member} também é admin da escola demo`);
+        log(`${member} também é admin da escola`);
       } else {
-        log(`${member} não tem conta local; ignorado`);
+        log(`${member} não tem conta neste banco; ignorado`);
       }
     }
-    const base = { db, tenantId: school!.id, actorId: demoUser!.id, timezone: TZ, settings: DEFAULT_TENANT_SETTINGS };
+    const base = { db, tenantId: school!.id, actorId: demoUser!.id, timezone: TZ, settings };
     const nowCtx = at(base, realNow);
 
     const start = addDays(today, -49); // 7 semanas atrás
@@ -153,7 +169,7 @@ async function main() {
       return { ...c!, modules: mods };
     };
     const ingles = await mkCourse(
-      { name: "Inglês em Grupo", type: "regular", color: "#1e46c8", capacity: 8, lessonMinutes: 60, packageLessons: 48, cancelNoticeHours: 6, lessonPriceCents: 6000, modalities: ["online", "presencial"] },
+      { name: "Inglês Regular", type: "regular", color: "#1e46c8", capacity: 8, lessonMinutes: 60, packageLessons: 48, cancelNoticeHours: 6, lessonPriceCents: 6000, modalities: ["online", "presencial"] },
       ["Básico 1", "Básico 2", "Intermediário 1", "Intermediário 2", "Avançado"],
     );
     const espanhol = await mkCourse(
@@ -161,7 +177,7 @@ async function main() {
       ["Básico", "Intermediário"],
     );
     const particular = await mkCourse({
-      name: "Inglês Particular", type: "particular", color: "#0b1220", capacity: 1, lessonMinutes: 60, packageLessons: 32, cancelNoticeHours: 24, lessonPriceCents: 14000, modalities: ["online", "presencial"],
+      name: "Inglês Private", type: "particular", color: "#0b1220", capacity: 1, lessonMinutes: 60, packageLessons: 32, cancelNoticeHours: 24, lessonPriceCents: 14000, modalities: ["online", "presencial"],
     });
     const corporativo = await mkCourse(
       { name: "Inglês Corporativo", type: "regular", color: "#0f766e", capacity: 12, lessonMinutes: 60, packageLessons: 36, cancelNoticeHours: 6, lessonPriceCents: 5000, modalities: ["presencial"] },
@@ -219,7 +235,7 @@ async function main() {
     type Spec = { course: typeof ingles; module?: number; name: string; teacher: number; room: keyof typeof rooms; modality: "online" | "presencial"; schedules: [number, string][]; capacity?: number };
     const groupSpecs: Spec[] = [
       { course: ingles, module: 0, name: "Básico 1 · Seg e Qua 19h", teacher: 0, room: "v1", modality: "online", schedules: [[1, "19:00"], [3, "19:00"]] },
-      { course: ingles, module: 1, name: "Básico 2 · Ter e Qui 19h", teacher: 1, room: "v1", modality: "online", schedules: [[2, "19:00"], [4, "19:00"]] },
+      { course: ingles, module: 1, name: "FAAP", teacher: 1, room: "v1", modality: "online", schedules: [[2, "19:00"], [4, "19:00"]] },
       { course: ingles, module: 2, name: "Intermediário 1 · Seg e Qua 20h", teacher: 0, room: "v2", modality: "online", schedules: [[1, "20:00"], [3, "20:00"]] },
       { course: ingles, module: 3, name: "Intermediário 2 · Ter e Qui 20h", teacher: 1, room: "v2", modality: "online", schedules: [[2, "20:00"], [4, "20:00"]] },
       { course: ingles, module: 4, name: "Avançado · Sábado 9h", teacher: 5, room: "s101", modality: "presencial", schedules: [[6, "09:00"]] },
@@ -328,7 +344,7 @@ async function main() {
     for (const [i, [teacherIdx, schedules, modality, roomKey]] of particularSpecs.entries()) {
       const s = students[i]!;
       const { classGroup } = await createClassGroup(nowCtx, {
-        courseId: particular.id, name: `Particular · ${s.name}`, teacherId: teachers[teacherIdx]!.id, roomId: rooms[roomKey].id, modality,
+        courseId: particular.id, name: `Private · ${s.name}`, teacherId: teachers[teacherIdx]!.id, roomId: rooms[roomKey].id, modality,
         startsOn: start, endsOn: end, schedules: schedules.map(([weekday, startTime]) => ({ weekday, startTime })),
       });
       await setClassGroupTeacherRate(nowCtx, classGroup.id, pick([10000, 12000, 12000, 15000]));
@@ -390,7 +406,7 @@ async function main() {
       });
       students.push({ id: st.id, name });
       primeiroOpen ??= { id: st.id, name };
-      const startsOn = addDays(today, -30 + i * 3);
+      const startsOn = addDays(today, -45 + i * 3);
       const e = await createEnrollment(at(base, localMidnight(startsOn)), {
         studentId: st.id,
         courseId: inglesOpen.id,
@@ -401,7 +417,27 @@ async function main() {
       });
       openStudents++;
 
-      // ele pega algumas das vagas abertas do nível dele, em ofertas diferentes
+      // nas semanas que passaram ele foi marcando aulas do nível dele, cada vez num horário:
+      // é isso que, concluído com presença, conta para a aula private bônus (§5.9.1)
+      const passadas = await db
+        .select({ id: lesson.id, startsAt: lesson.startsAt })
+        .from(lesson)
+        .where(
+          sql`${lesson.tenantId} = ${school!.id} and ${lesson.moduleId} = ${inglesOpen.modules[moduleIdx]!.id}
+            and ${lesson.startsAt} >= ${localMidnight(startsOn).toISOString()} and ${lesson.endsAt} < ${realNow.toISOString()}`,
+        )
+        .orderBy(lesson.startsAt);
+      for (const l of passadas) {
+        if (!chance(0.9)) continue;
+        try {
+          await reserveLesson(at(base, new Date(l.startsAt.getTime() - 24 * 3600_000)), e.id, l.id);
+          reservas++;
+        } catch {
+          // choque com outra reserva no mesmo horário: segue
+        }
+      }
+
+      // e já pegou algumas das vagas abertas que vêm por aí, em ofertas diferentes
       const slots = await listOpenSlots(nowCtx, e.id);
       for (const slot of slots.filter((x) => !x.full).slice(0, 3 + (i % 3))) {
         try {
@@ -413,6 +449,19 @@ async function main() {
       }
     }
     log(`${openStudents} alunos open-entry com ${reservas} aulas reservadas (sem turma fixa, cada um no seu nível)`);
+
+    // o primeiro aluno open entry também faz private: os bônus dele entram direto no extrato
+    try {
+      const { classGroup } = await createClassGroup(nowCtx, {
+        courseId: particular.id, name: `Private · ${primeiroOpen!.name}`, teacherId: teachers[6]!.id, roomId: rooms.v1.id, modality: "online",
+        startsOn: start, endsOn: end, schedules: [{ weekday: 5, startTime: "15:00" }],
+      });
+      await generateLessons(nowCtx, classGroup.id, { from: today, to: addDays(today, 56) });
+      await createEnrollment(nowCtx, { studentId: primeiroOpen!.id, classGroupId: classGroup.id, packageLessons: 8, contract: { installments: 2 } });
+      log(`${primeiroOpen!.name} faz open entry e private: recebe as aulas bônus na matrícula private`);
+    } catch (err) {
+      log(`private do aluno open entry pulado: ${(err as Error).message}`);
+    }
 
     // colaboradores das turmas dedicadas ficam ligados à empresa cliente
     const corporateGroups = new Set(groups.filter((g) => g.courseId === corporativo.id).map((g) => g.id));
@@ -594,7 +643,7 @@ async function main() {
     });
     await tryFlow("mudança de nível", async () => {
       const e = levelOptions.find((x) => x.className?.startsWith("Básico 1 · Seg"));
-      const target = groups.find((g) => g.name.startsWith("Básico 2"));
+      const target = groups.find((g) => g.name === "FAAP");
       const card = await createCard(nowCtx, "nivel", { enrollmentId: e!.id });
       await moveCard(nowCtx, card.id, "teste");
       await updateCard(nowCtx, card.id, { result: "A2 consolidado", targetClassGroupId: target!.id });
@@ -632,7 +681,7 @@ async function main() {
     const account = async (email: string, name: string) => {
       let [u] = await db.select().from(authUser).where(eq(authUser.email, email));
       if (!u) {
-        await auth.api.signUpEmail({ body: { email, password: "classa-demo-123", name } });
+        await auth.api.signUpEmail({ body: { email, password, name } });
         [u] = await db.select().from(authUser).where(eq(authUser.email, email));
       }
       return u!;
@@ -643,12 +692,12 @@ async function main() {
     const [studentPerson] = await db.select({ personId: studentTable.personId }).from(studentTable).where(eq(studentTable.id, privateStudent.id));
     const [openPerson] = await db.select({ personId: studentTable.personId }).from(studentTable).where(eq(studentTable.id, primeiroOpen!.id));
     const demoProfiles = [
-      { email: "coordenacao@demo.classa.dev", name: "Coordenação Demo", profileType: "colaborador" as const, level: 2, areas: { ped: "total" as const, aca: "restrito" as const }, personId: null },
-      { email: "financeiro@demo.classa.dev", name: "Financeiro Demo", profileType: "colaborador" as const, level: 3, areas: { fin: "total" as const, aca: "restrito" as const }, personId: null },
-      { email: "professor@demo.classa.dev", name: teachers[0]!.name, profileType: "prestador" as const, level: 4, areas: {}, personId: teacherPerson!.personId },
-      { email: "aluno@demo.classa.dev", name: privateStudent.name, profileType: "aluno" as const, level: 5, areas: {}, personId: studentPerson!.personId },
+      { email: `coordenacao@${ACCOUNT_DOMAIN}`, name: "Coordenação", profileType: "colaborador" as const, level: 2, areas: { ped: "total" as const, aca: "restrito" as const }, personId: null },
+      { email: `financeiro@${ACCOUNT_DOMAIN}`, name: "Financeiro", profileType: "colaborador" as const, level: 3, areas: { fin: "total" as const, aca: "restrito" as const }, personId: null },
+      { email: `professor@${ACCOUNT_DOMAIN}`, name: teachers[0]!.name, profileType: "prestador" as const, level: 4, areas: {}, personId: teacherPerson!.personId },
+      { email: `aluno@${ACCOUNT_DOMAIN}`, name: privateStudent.name, profileType: "aluno" as const, level: 5, areas: {}, personId: studentPerson!.personId },
       // aluno sem turma fixa: é ele que marca a própria aula na área do aluno
-      { email: "aluno.open@demo.classa.dev", name: primeiroOpen!.name, profileType: "aluno" as const, level: 5, areas: {}, personId: openPerson!.personId },
+      { email: `aluno.open@${ACCOUNT_DOMAIN}`, name: primeiroOpen!.name, profileType: "aluno" as const, level: 5, areas: {}, personId: openPerson!.personId },
     ];
     for (const prof of demoProfiles) {
       const u = await account(prof.email, prof.name);
@@ -660,13 +709,14 @@ async function main() {
       }
     }
     void personTable;
-    log("contas de demonstração: coordenacao@, financeiro@, professor@, aluno@ e aluno.open@demo.classa.dev (senha classa-demo-123)");
+    log(`contas de cada perfil: coordenacao@, financeiro@, professor@, aluno@ e aluno.open@${ACCOUNT_DOMAIN}`);
 
     const active = await listEnrollments(nowCtx, { activeOnly: true });
     const high = active.filter((e) => e.usage >= 0.8).length;
     log(`${active.length} matrículas ativas; ${high} com 80% ou mais do pacote usado`);
 
-    console.log(`\nPronto. Entre com ${demoEmail} / classa-demo-123 e abra a escola "Escola Demo" (/e/${SLUG}).`);
+    console.log(`\nPronto. Entre com ${demoEmail} / ${password} e abra a escola "${SCHOOL_NAME}" (/e/${SLUG}).`);
+    console.log(`Os outros perfis (coordenacao@, financeiro@, professor@, aluno@, aluno.open@${ACCOUNT_DOMAIN}) usam a mesma senha.`);
   } finally {
     await close();
   }
