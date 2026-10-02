@@ -580,8 +580,28 @@ async function main() {
         paid++;
       }
     }
-    for (const id of payments.slice(3, 5)) {
-      await reversePayment(nowCtx, id, "Pagamento contestado no cartão");
+    // quem vence ainda este mês às vezes paga adiantado: o mês corrente não começa zerado
+    const month = today.slice(0, 7);
+    const adiantadas = (await listInstallments(nowCtx)).filter(
+      (i) => i.dueDate > today && i.dueDate.startsWith(month) && i.status === "a_vencer" && !debtors.has(i.studentId),
+    );
+    for (const i of adiantadas) {
+      if (!chance(0.45)) continue;
+      const paidOn = addDays(today, -int(0, Math.max(0, Number(today.slice(8, 10)) - 1)));
+      await registerPayment(at(base, new Date(`${paidOn}T15:00:00Z`)), i.id, { method: pick(methods), paidOn });
+      paid++;
+    }
+
+    // o estorno entra no mês em que foi feito: estorna pagamentos de meses passados poucos
+    // dias depois de pagos, para nenhum mês ficar com o recebido negativo
+    const { payment: paymentTable } = await import("@classa/db");
+    const antigos = await db
+      .select({ id: paymentTable.id, paidOn: paymentTable.paidOn })
+      .from(paymentTable)
+      .where(sql`${paymentTable.tenantId} = ${school!.id} and ${paymentTable.amountCents} > 0 and ${paymentTable.paidOn} < ${`${month}-01`} and extract(day from ${paymentTable.paidOn}) <= 20`)
+      .orderBy(paymentTable.paidOn);
+    for (const p of antigos.filter((x) => payments.includes(x.id)).slice(-2)) {
+      await reversePayment(at(base, new Date(`${addDays(p.paidOn, 3)}T15:00:00Z`)), p.id, "Pagamento contestado no cartão");
     }
     log(`${paid} parcelas pagas, ${partial} pagas pela metade, ${open} em aberto, 2 estornos`);
 
