@@ -1,5 +1,5 @@
-import { eq, tenant, type TenantSettings } from "@classa/db";
-import { DEFAULT_BONUS_RULE, resolveVocabulary } from "@classa/domain";
+import { and, asc, authUser, eq, isNull, membership, person, tenant, type TenantSettings } from "@classa/db";
+import { DEFAULT_BONUS_RULE, permissionMap, resolveVocabulary } from "@classa/domain";
 import { Hono, type Context } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
@@ -39,6 +39,44 @@ export const settingsRoutes = new Hono<AppEnv>()
   .get("/settings/school", (c) => {
     const s = c.var.tenant.settings;
     return c.json({ vocabulary: resolveVocabulary(s.vocabulary), custom: s.vocabulary ?? {}, bonus: s.bonus ?? DEFAULT_BONUS_RULE });
+  })
+  /**
+   * "Ver como" das escolas de demonstração: os perfis que o admin pode emprestar.
+   * Responde vazio fora de escola de demonstração ou para quem não é admin de verdade.
+   */
+  .get("/demo/profiles", async (c) => {
+    const t = c.var.tenant;
+    if (!t.settings.demo || !t.realAdmin) return c.json({ demo: false, viewingAs: null, profiles: [] });
+    const rows = await c.var.db
+      .select({
+        id: membership.id,
+        profileType: membership.profileType,
+        level: membership.level,
+        areas: membership.areas,
+        userName: authUser.name,
+        email: authUser.email,
+        personName: person.name,
+        isMe: eq(membership.userId, c.var.user!.id),
+      })
+      .from(membership)
+      .innerJoin(authUser, eq(authUser.id, membership.userId))
+      .leftJoin(person, eq(person.id, membership.personId))
+      .where(and(eq(membership.tenantId, t.id), isNull(membership.deactivatedAt), eq(membership.status, "ativo")))
+      .orderBy(asc(membership.level), asc(authUser.name));
+    return c.json({
+      demo: true,
+      viewingAs: t.viewingAs,
+      profiles: rows.map((r) => ({
+        id: r.id,
+        name: r.personName ?? r.userName,
+        email: r.email,
+        isMe: !!r.isMe,
+        profileType: r.profileType,
+        level: r.level,
+        areas: r.areas,
+        permissions: permissionMap({ profileType: r.profileType, level: r.level, areas: r.areas }),
+      })),
+    });
   })
   .patch("/settings/vocabulary", requireAdmin, async (c) => {
     const { data, error } = await parseBody(c, vocabularyInput);

@@ -38,6 +38,10 @@ export type TenantContext = {
   /** Professor e aluno ligados à pessoa do usuário, para o escopo "próprio". */
   teacherId: string | null;
   studentId: string | null;
+  /** Escola de demonstração com o admin vendo como outro perfil: o vínculo emprestado. */
+  viewingAs: string | null;
+  /** O usuário logado é admin desta escola, mesmo quando está vendo como outro perfil. */
+  realAdmin: boolean;
 };
 
 export type AppVariables = {

@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { api, type Membership } from "../api.ts";
+import { effectiveMembership, useDemoProfiles } from "./view-as.ts";
 
 /** Perfil do usuário na escola aberta. O servidor decide; a tela só esconde o que não pode. */
 export function useMembership(): Membership | undefined {
   const { slug } = useParams({ strict: false }) as { slug?: string };
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
-  return me.data?.memberships.find((m) => m.slug === slug);
+  const demo = useDemoProfiles(slug ?? "");
+  return effectiveMembership(me.data?.memberships.find((m) => m.slug === slug), demo.data?.profiles);
 }
 
 export function canDo(m: Membership | undefined, resource: string, action = "ver") {

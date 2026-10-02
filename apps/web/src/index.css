@@ -325,3 +325,31 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); bord
 .rules li + li {
   margin-top: 0.15rem;
 }
+
+/* "ver como" das escolas de demonstração */
+.view-as {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.view-as select {
+  font-size: 0.85rem;
+  padding: 6px 8px;
+}
+.view-as-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1.25rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  background: var(--warn-soft);
+  color: var(--ink);
+  font-size: 0.9rem;
+}

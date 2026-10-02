@@ -7,6 +7,9 @@ import type { AppEnv } from "../app.ts";
  * Resolve a escola pelo :slug e confirma que o usuário tem vínculo ativo com ela.
  * Quem não tem vínculo recebe 404, para não revelar que a escola existe.
  */
+/** Cabeçalho do "ver como" das escolas de demonstração: o id do vínculo a emprestar. */
+export const VIEW_AS_HEADER = "x-classa-view-as";
+
 export const requireTenant = createMiddleware<AppEnv>(async (c, next) => {
   const user = c.var.user;
   if (!user) return c.json({ error: "unauthorized" }, 401);
@@ -35,6 +38,23 @@ export const requireTenant = createMiddleware<AppEnv>(async (c, next) => {
   if (!row) return c.json({ error: "not_found" }, 404);
   if (row.status === "bloqueado") return c.json({ error: "forbidden", message: "Seu acesso a esta escola está bloqueado." }, 403);
 
+  // "ver como": só em escola de demonstração e só para quem é admin de verdade nela.
+  // O perfil, o nível, as áreas e a pessoa passam a ser os do vínculo emprestado; quem
+  // age (auditoria) continua sendo o usuário logado.
+  const realAdmin = row.profileType === "admin";
+  let viewingAs: string | null = null;
+  const viewAs = c.req.header(VIEW_AS_HEADER);
+  if (viewAs && row.settings.demo && realAdmin && viewAs !== row.membershipId && /^[0-9a-f-]{36}$/i.test(viewAs)) {
+    const [other] = await c.var.db
+      .select({ id: membership.id, profileType: membership.profileType, level: membership.level, areas: membership.areas, personId: membership.personId })
+      .from(membership)
+      .where(and(eq(membership.id, viewAs), eq(membership.tenantId, row.id), isNull(membership.deactivatedAt)));
+    if (other) {
+      Object.assign(row, { membershipId: other.id, profileType: other.profileType, level: other.level, areas: other.areas, personId: other.personId });
+      viewingAs = other.id;
+    }
+  }
+
   // escopo: professor vê as próprias aulas; aluno, os próprios dados
   let teacherId: string | null = null;
   let studentId: string | null = null;
@@ -46,7 +66,7 @@ export const requireTenant = createMiddleware<AppEnv>(async (c, next) => {
   }
 
   const { status: _status, ...ctx } = row;
-  c.set("tenant", { ...ctx, teacherId, studentId });
+  c.set("tenant", { ...ctx, teacherId, studentId, viewingAs, realAdmin });
   await next();
 });
 

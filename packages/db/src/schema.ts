@@ -123,6 +123,11 @@ export type TenantSettings = {
   };
   /** A cada `every` presenças em aula open entry, uma aula private de bônus (DOMINIO.md §5.9.1). */
   bonus?: { enabled: boolean; every: number };
+  /**
+   * Escola de demonstração: o admin pode "ver como" qualquer perfil da escola sem
+   * trocar de login. Só o seed liga; não há tela nem rota que mude isso.
+   */
+  demo?: boolean;
   /** Opcional: escola sem o campo segue o padrão de cada decisão. */
   flows?: {
     /** Área que matricula no fim da entrada do aluno (decisão D16). Padrão: Administrativo. */

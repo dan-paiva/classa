@@ -131,7 +131,8 @@ async function main() {
 
     /* ---------------------------------------------------------- escola e acesso */
     // a escola de teste já vem com a aula private bônus ligada (DOMINIO.md §5.9.1)
-    const settings = { ...DEFAULT_TENANT_SETTINGS, bonus: { enabled: true, every: 5 } };
+    // e é de demonstração: o admin pode "ver como" cada perfil sem trocar de login
+    const settings = { ...DEFAULT_TENANT_SETTINGS, bonus: { enabled: true, every: 5 }, demo: true };
     const [school] = await db.insert(tenant).values({ name: SCHOOL_NAME, slug: SLUG, settings }).returning();
     const auth = createAuth({ db, secret: "seed-local-nao-usado-em-producao-000000", baseURL: "http://localhost:8787" });
     const demoEmail = `admin@${ACCOUNT_DOMAIN}`;

@@ -1,4 +1,5 @@
 import { COURSE_KINDS, hasLevels, type CourseKind } from "@classa/domain";
+import { viewAsHeader } from "./lib/view-as.ts";
 export type Role = "admin";
 export type ProfileType = "admin" | "colaborador" | "prestador" | "aluno";
 export type Membership = {
@@ -68,7 +69,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     ...init,
     credentials: "include",
-    headers: { "content-type": "application/json", ...init?.headers },
+    headers: { "content-type": "application/json", ...viewAsHeader(path), ...init?.headers },
   });
   const body = (await res.json().catch(() => ({}))) as { issues?: FieldIssues; message?: string };
   if (!res.ok) throw new ApiError(res.status, body.issues, body.message);
