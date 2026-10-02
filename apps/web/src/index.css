@@ -283,3 +283,45 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); bord
 .audit-detail { background: var(--ground); border-radius: 8px; }
 .audit-detail td { word-break: break-word; max-width: 420px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* tipos de curso: escolha em cartões, cada um com as regras que aplica */
+.kind-choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+.kind-choice label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.kind-choice label:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.kind-choice .kind-title {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  font-weight: 600;
+  text-align: left;
+}
+.kind-choice .kind-title input {
+  width: auto;
+  margin: 0;
+}
+.rules {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+.rules li + li {
+  margin-top: 0.15rem;
+}

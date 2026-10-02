@@ -8,7 +8,8 @@ import { Badge, LoadError, Loading, PageHead, type Tone } from "../ui.tsx";
 const ENTITY: Record<string, string> = {
   tenant: "Escola",
   course: "Curso",
-  course_module: "Módulo",
+  course_module: "Nível",
+  bonus_lesson: "Aula bônus",
   person: "Pessoa",
   teacher: "Professor",
   student: "Aluno",
@@ -61,7 +62,7 @@ const FIELD: Record<string, string> = {
   roomId: "sala",
   classGroupId: "turma",
   courseId: "curso",
-  moduleId: "módulo",
+  moduleId: "nível",
   personId: "pessoa",
   companyId: "empresa",
   enrollmentId: "matrícula",

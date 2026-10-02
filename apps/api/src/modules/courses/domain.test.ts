@@ -8,8 +8,8 @@ describe("regras de curso", () => {
     expect(allowsModules("particular")).toBe(false);
   });
 
-  it("grupo e turmas dedicadas aceitam módulos", () => {
-    expect(COURSE_TYPES.filter(allowsModules)).toEqual(["grupo", "turmas_dedicadas"]);
+  it("regular e open entry se dividem em níveis", () => {
+    expect(COURSE_TYPES.filter(allowsModules)).toEqual(["regular", "open_entry"]);
   });
 
   it("todo tipo tem regras válidas", () => {

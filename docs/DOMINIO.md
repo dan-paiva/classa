@@ -2,6 +2,7 @@
 
 17/09/2026 · derivado da leitura completa do protótipo de navegação (fora do repositório)
 18/09/2026 · revisto com o retorno da apresentação: identidade da pessoa (3.1, 3.4), open-entry (5.9), agenda geral (5.10) e fluxo de entrada do aluno (7.5.1)
+02/10/2026 · tipos de curso viram regra (4.1), vocabulário da escola (4.6) e aula private bônus (5.9.1)
 
 Este documento é a fonte da verdade das entidades, relações e regras do Classa. Cada parte nova do sistema é conferida contra ele antes de ser construída.
 
@@ -136,24 +137,39 @@ Regras de habilitação (do protótipo):
 ## 4. Catálogo
 
 ### 4.1 Curso *(já construído)*
-Tipos: `grupo`, `particular`, `hibrido`, `workshop`, `turmas_dedicadas`. O tipo não muda depois de criado.
+**O tipo é a regra, não um rótulo** (**decisão D18**). São três, e o tipo não muda depois de criado:
+
+| | Regular | Open entry | Private (`particular`) |
+| --- | --- | --- | --- |
+| Como o aluno faz as aulas | pertence a uma turma: horário e professor fixos | escolhe aula a aula os horários publicados que já têm professor, só no nível dele; em cada horário encontra colegas diferentes | só ele e um professor |
+| Matrícula | presa a uma turma; entra em todas as aulas futuras dela | presa só ao nível; cada aula é uma reserva (5.9) | presa à turma de 1 vaga do aluno |
+| Níveis | opcionais; com níveis, cada turma é de um | obrigatórios: sem nível não se publica horário | não tem |
+| Alunos por aula | a escola define | a escola define, por horário | sempre 1 |
+| Quem marca a aula | — (vem da turma) | `auto_agenda`: o aluno ou só a secretaria | — (vem da turma) |
+| Folha | valor hora × duração | valor hora × duração | valor fixo por aula |
+| Aula bônus | — | gera (5.9.1) | recebe (5.9.1) |
+
+O regime da turma e da matrícula (5.1, 5.9) **é sempre o tipo do curso**: turma open entry só existe em curso open entry, e assim por diante. Quem quer os dois formatos para o mesmo idioma cria dois cursos.
+
+Os cinco tipos do protótipo (`grupo`, `particular`, `hibrido`, `workshop`, `turmas_dedicadas`) eram só nomes: nenhum mudava comportamento além do particular. Na migração, particular virou private; curso cujas turmas e matrículas eram todas open-entry virou open entry; o resto virou regular. Curso que já misturava regimes virou regular e manteve as turmas e matrículas antigas como estavam.
 
 | Regra | Padrão por tipo | Aplicação |
 | --- | --- | --- |
-| alunos por aula | particular 1; grupo 8; turmas 25 | **bloqueia** matrícula acima das vagas (**corrigido**, **decisão D6**) |
-| duração (min) | 45 grupo; 50 turmas; 60 particular | fim da aula = início + duração |
-| aulas no pacote | 48 grupo; 36 turmas; 32 particular | pré-preenche a matrícula |
-| antecedência para cancelar (h) | 6; particular 24 | define se o cancelamento debita crédito |
-| valor da aula (R$) | 60; turmas 400; particular 140 | base do contrato e da receita |
+| alunos por aula | private 1; regular 8; open entry 6 | **bloqueia** matrícula acima das vagas (**corrigido**, **decisão D6**) |
+| duração (min) | 60 | fim da aula = início + duração |
+| aulas no pacote | 48; private 32 | pré-preenche a matrícula |
+| antecedência para cancelar (h) | 6; private 24 | define se o cancelamento debita crédito |
+| valor da aula (R$) | 60; private 140 | base do contrato e da receita |
 | modalidades | online, presencial | a matrícula escolhe uma das aceitas |
 
+- `auto_agenda` (só open entry): quem reserva a vaga (5.9) — o próprio aluno pela área dele, ou só a secretaria. Não muda nenhuma outra regra da reserva: nível, vaga, saldo e choque valem igual nos dois casos.
+
 Também vêm do protótipo, e ainda faltam no Classa:
-- `auto_agenda`: quem reserva a vaga open-entry (5.9) — o próprio aluno pela área dele, ou só a secretaria. Não muda nenhuma outra regra da reserva: nível, vaga, saldo e choque valem igual nos dois casos.
 - `exige_disponibilidade`: a alocação individual bloqueia fora da disponibilidade do aluno.
 - idioma.
 
-### 4.2 Módulo *(já construído)*
-Só em cursos `grupo` e `turmas_dedicadas`. Tem ordem, nome e cor. O **módulo individual** dentro de um curso em grupo, que o protótipo identificava pelo nome, vira um campo `individual` no módulo.
+### 4.2 Nível (módulo) *(já construído)*
+Só em cursos regular e open entry. Tem ordem, nome e cor. No código e no banco continua `module`. A aula individual dentro de um curso em grupo, que o protótipo identificava pelo nome do módulo, agora é um curso private.
 
 ### 4.3 Sala
 | Campo | Regra |
@@ -183,6 +199,9 @@ Só em cursos `grupo` e `turmas_dedicadas`. Tem ordem, nome e cor. O **módulo i
 - O aluno vê na área dele tudo o que recebeu, nas matrículas ativas.
 - Fica de fora por ora: reenviar o material do nível novo quando o aluno muda de nível (7.5, Mudança de nível).
 
+### 4.6 Vocabulário da escola
+Cada escola chama curso, nível e turma, e os três tipos de curso, pelo nome que usa no dia a dia (ex.: Programa, Stage, Grupo; Flex no lugar de Open entry). Fica em Configurações → Nomes da escola (só admin) e vale em todas as telas: menu, títulos, formulários e o texto das regras de cada tipo. Cada termo tem singular, plural e gênero, para "Novo grupo" / "Nova turma" saírem certos. Muda só o que aparece; as regras continuam presas ao tipo. Campo vazio volta ao padrão.
+
 ## 5. Agenda
 
 ### 5.1 Turma / oferta
@@ -195,12 +214,12 @@ Só em cursos `grupo` e `turmas_dedicadas`. Tem ordem, nome e cor. O **módulo i
 | professor titular | precisa estar habilitado e ativo (**corrigido**) |
 | sala | precisa aceitar a modalidade |
 | modalidade | online ou presencial |
-| regime | `regular`, `open_entry` ou `particular` (5.9). Nada a ver com modalidade |
-| vagas | padrão = alunos por aula do curso |
+| regime | o tipo do curso (4.1): `regular`, `open_entry` ou `particular`. Não se escolhe na turma. Nada a ver com modalidade |
+| vagas | padrão = alunos por aula do curso; private é sempre 1 |
 | horários | lista de (dia da semana, hora de início com minutos) |
 | período | início e fim. **Aulas só são geradas dentro dele** (**corrigido**) |
 
-A aula particular (curso particular ou módulo individual) é uma turma de 1 vaga criada na alocação da matrícula.
+A aula private é uma turma de 1 vaga de um curso private, criada para o aluno.
 
 **Modalidade e regime são eixos diferentes** e a palavra já estava tomada: modalidade é *online ou presencial*; regime é *como o aluno se liga à turma* (5.9). Uma oferta open-entry presencial é uma combinação normal.
 
@@ -327,6 +346,16 @@ O resto é igual ao regime regular: o assento é a mesma linha de `aula_aluno`, 
 
 **Trocar de nível** afeta só reserva futura: aula já reservada no módulo antigo continua valendo e o aluno é avisado (**decisão D14**).
 
+#### 5.9.1 Aula private bônus
+Regra da escola (Configurações → Aula private bônus, só admin): a cada **N presenças em aula open entry** (padrão 5) o aluno ganha **uma aula private**.
+
+- Conta a presença quando a aula é **concluída** com o aluno presente. Falta e cancelamento não contam.
+- O bônus vira um lançamento `bonus` (+1) no extrato da matrícula private ativa mais recente do aluno. Não entra no contrato nem gera parcela.
+- Sem matrícula private, o bônus fica guardado e entra sozinho quando ela for criada (ou completada, na entrada do aluno).
+- Conceder é idempotente: o total é sempre presenças ÷ N, e cada bônus tem ordem única por aluno. Corrigir uma presença depois **não tira** bônus já ganho.
+- A ficha do aluno e a área do aluno mostram quantos ganhou, quantos esperam matrícula private e quanto falta para o próximo.
+- Escolas que já usavam o Classa em 02/10/2026 ficaram com a regra ligada (5 presenças); escola nova começa com ela desligada.
+
 **Duas ofertas no mesmo horário exigem professores diferentes** — não é regra do open-entry, é a agenda do professor (5.3), que já não deixa ele dar duas aulas ao mesmo tempo. Vale lembrar na hora de montar a grade: uma escola que quer três turmas open-entry às 19h precisa de três professores.
 
 ### 5.10 Agenda geral
@@ -344,7 +373,7 @@ Uma tela só com tudo que ocupa hora: aula (5.3), evento, reunião e nivelamento
 | Campo | Regra |
 | --- | --- |
 | aluno, curso | o curso não muda. Para trocar, encerra e abre outra |
-| regime | `regular`, `open_entry` ou `particular` (5.9) |
+| regime | o tipo do curso (4.1); não se escolhe na matrícula |
 | módulo | obrigatório se o curso tem módulos. No open-entry é o **nível** do aluno |
 | turma | obrigatória no regular e no particular; **vazia no open-entry** |
 | modalidade | uma das aceitas pelo curso |
@@ -525,7 +554,7 @@ Motor comum:
 | 5 | Nivelamento marcado | Pedagógico | data, hora, avaliador | **cria o nivelamento na agenda** (5.8), com o aluno como avaliado |
 | 6 | Data comunicada | Comercial | — | registra que o comercial avisou o aluno |
 | 7 | Nivelado | Pedagógico | módulo sugerido | grava o resultado no nivelamento |
-| 8 | Matrícula completa | Administrativo (**decisão D16**) | regime, e turma se for regular | a **mesma** matrícula ganha turma (regular) ou nível (open-entry) e o aluno entra nas aulas; o lead fica como matriculado |
+| 8 | Matrícula completa | Administrativo (**decisão D16**) | turma (curso regular ou private) ou nível sugerido (open entry) | a **mesma** matrícula ganha turma ou nível, conforme o tipo do curso (4.1), e o aluno entra nas aulas; o lead fica como matriculado |
 | 9 | Boas-vindas | CX | — | o CX recebe o aluno: escola, agenda e como falar com o suporte |
 | 10 | Material enviado | CX | material cadastrado para o curso e o nível (4.5) | **entrega o material** do curso todo e do nível da matrícula, que aparece na área do aluno |
 | 11 | Concluída | CX | — | final |
@@ -641,6 +670,8 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 | D15 | Créditos somam entre matrículas do mesmo aluno? | Não; saldo é por matrícula |
 | D16 | Que área matricula no fim do fluxo de entrada? | Administrativo, configurável por escola em Configurações → Fluxos (fica com a etapa Matrícula completa) |
 | D17 | Quantas faltas no nivelamento até o card ficar "sem resposta"? | Três. Como o aluno já pagou (7.5.1), ele não vira Perdido: o CX procura |
+| D18 | O regime é escolhido na turma ou vem do curso? | **Decidida em 02/10/2026: vem do tipo do curso.** Regular, open entry e private, cada um com as próprias regras (4.1) |
+| D19 | Aula bônus do open entry | **Decidida em 02/10/2026:** 1 aula private a cada 5 presenças, configurável por escola; crédito automático na matrícula private (5.9.1) |
 
 ## Ordem de construção
 
@@ -658,3 +689,4 @@ Cada decisão tem uma proposta padrão. Enquanto não houver resposta, a constru
 12. **Open-entry:** regime na turma e na matrícula, matrícula sem turma, reserva por aula com trava de nível, de vaga e de choque. ✔
 13. **Agenda geral e fluxo de entrada:** eventos, reuniões e nivelamento; leitura unificada da agenda; área por etapa no motor de fluxos; fluxo de entrada do aluno. ✔
 14. **Pós-venda e material do aluno:** cadastro de material por curso e nível (Acadêmico), etapas de boas-vindas e envio de material (CX) no fim da entrada, material na área do aluno. ✔
+15. **Tipos de curso como regra, vocabulário da escola e aula private bônus.** ✔

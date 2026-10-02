@@ -31,16 +31,16 @@ async function criarCurso(body: Record<string, unknown>) {
 }
 
 describe("cursos", () => {
-  it("cria curso em grupo com as regras padrão do tipo", async () => {
-    const { res, course } = await criarCurso({ name: "Inglês em grupo", type: "grupo" });
+  it("cria curso regular com as regras padrão do tipo", async () => {
+    const { res, course } = await criarCurso({ name: "Inglês em grupo", type: "regular" });
     expect(res.status).toBe(201);
-    expect(course).toMatchObject({ capacity: 8, lessonMinutes: 45, packageLessons: 48, cancelNoticeHours: 6, modules: [] });
+    expect(course).toMatchObject({ capacity: 8, lessonMinutes: 60, packageLessons: 48, cancelNoticeHours: 6, modules: [] });
   });
 
   it("aceita regras próprias no lugar das padrão", async () => {
     const { course } = await criarCurso({
       name: "Espanhol em grupo",
-      type: "grupo",
+      type: "regular",
       capacity: 6,
       lessonMinutes: 60,
       lessonPriceCents: 6600,
@@ -55,7 +55,7 @@ describe("cursos", () => {
   });
 
   it("recusa nome repetido na mesma escola", async () => {
-    const { res } = await criarCurso({ name: "Inglês em grupo", type: "grupo" });
+    const { res } = await criarCurso({ name: "Inglês em grupo", type: "regular" });
     expect(res.status).toBe(409);
   });
 
@@ -67,7 +67,7 @@ describe("cursos", () => {
   });
 
   it("edita regras e registra antes e depois na auditoria", async () => {
-    const { course } = await criarCurso({ name: "Francês", type: "grupo" });
+    const { course } = await criarCurso({ name: "Francês", type: "regular" });
     const res = await escola.json(`/courses/${course!.id}`, "PATCH", { packageLessons: 32, name: "Francês em grupo" });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { course: Course }).course).toMatchObject({ packageLessons: 32, name: "Francês em grupo" });
@@ -79,7 +79,7 @@ describe("cursos", () => {
   });
 
   it("inativa e reativa sem apagar", async () => {
-    const { course } = await criarCurso({ name: "Alemão", type: "grupo" });
+    const { course } = await criarCurso({ name: "Alemão", type: "regular" });
     const off = await escola.json(`/courses/${course!.id}/deactivate`, "POST");
     expect(((await off.json()) as { course: Course }).course.deactivatedAt).not.toBeNull();
 
@@ -98,7 +98,7 @@ describe("cursos", () => {
 
 describe("módulos", () => {
   it("cria módulos em ordem dentro do curso em grupo", async () => {
-    const { course } = await criarCurso({ name: "Inglês Essential", type: "grupo" });
+    const { course } = await criarCurso({ name: "Inglês Essential", type: "regular" });
     for (const name of ["Essential 1", "Essential 2"]) {
       const res = await escola.json(`/courses/${course!.id}/modules`, "POST", { name });
       expect(res.status).toBe(201);
@@ -111,7 +111,7 @@ describe("módulos", () => {
   });
 
   it("recusa módulo repetido no mesmo curso", async () => {
-    const { course } = await criarCurso({ name: "Inglês Rise", type: "grupo" });
+    const { course } = await criarCurso({ name: "Inglês Rise", type: "regular" });
     await escola.json(`/courses/${course!.id}/modules`, "POST", { name: "Rise 1" });
     const res = await escola.json(`/courses/${course!.id}/modules`, "POST", { name: "Rise 1" });
     expect(res.status).toBe(409);
@@ -124,7 +124,7 @@ describe("módulos", () => {
   });
 
   it("renomeia e inativa módulo", async () => {
-    const { course } = await criarCurso({ name: "Inglês Apex", type: "grupo" });
+    const { course } = await criarCurso({ name: "Inglês Apex", type: "regular" });
     const criado = (await (await escola.json(`/courses/${course!.id}/modules`, "POST", { name: "Apx 1" })).json()) as { module: Module };
     const ren = await escola.json(`/courses/${course!.id}/modules/${criado.module.id}`, "PATCH", { name: "Apex 1" });
     expect(((await ren.json()) as { module: Module }).module.name).toBe("Apex 1");
@@ -135,7 +135,7 @@ describe("módulos", () => {
 
 describe("isolamento entre escolas", () => {
   it("quem é de outra escola não vê nem edita os cursos", async () => {
-    const { course } = await criarCurso({ name: "Curso secreto", type: "grupo" });
+    const { course } = await criarCurso({ name: "Curso secreto", type: "regular" });
     const outra = await t.adminOf("outra-escola");
 
     const lista = (await (await outra.json("/courses")).json()) as { courses: Course[] };
@@ -155,7 +155,7 @@ describe("isolamento entre escolas", () => {
 
 describe("mensagens de validação", () => {
   it("campo numérico vazio vira mensagem em português", async () => {
-    const res = await escola.json("/courses", "POST", { name: "Curso X", type: "grupo", lessonMinutes: null });
+    const res = await escola.json("/courses", "POST", { name: "Curso X", type: "regular", lessonMinutes: null });
     const body = (await res.json()) as { issues: Record<string, string[]> };
     expect(body.issues.lessonMinutes).toEqual(["Informe um número"]);
   });

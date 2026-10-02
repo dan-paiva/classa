@@ -23,7 +23,7 @@ let profId = "";
 beforeAll(async () => {
   t = await createTestApp();
   admin = await t.adminOf("openentry");
-  const { course } = await body<{ course: { id: string } }>(await admin.json("/courses", "POST", { name: "Inglês", type: "grupo", cancelNoticeHours: 6 }));
+  const { course } = await body<{ course: { id: string } }>(await admin.json("/courses", "POST", { name: "Inglês", type: "open_entry", cancelNoticeHours: 6 }));
   courseId = course.id;
   n1 = (await body<{ module: { id: string } }>(await admin.json(`/courses/${courseId}/modules`, "POST", { name: "Nível 1" }))).module.id;
   n2 = (await body<{ module: { id: string } }>(await admin.json(`/courses/${courseId}/modules`, "POST", { name: "Nível 2" }))).module.id;
@@ -169,9 +169,15 @@ describe("open-entry", () => {
   });
 
   it("regular continua igual: inscrição automática em todas as aulas da turma", async () => {
+    // o regime vem do tipo do curso: turma regular só existe em curso regular
+    const regular = (await body<{ course: { id: string } }>(await admin.json("/courses", "POST", { name: "Inglês Regular", type: "regular" }))).course;
+    const r1 = (await body<{ module: { id: string } }>(await admin.json(`/courses/${regular.id}/modules`, "POST", { name: "Nível 1" }))).module.id;
+    const { teacher } = await body<{ teacher: { id: string } }>(
+      await admin.json("/teachers", "POST", { person: { name: "Prof Regular" }, availability: manha, courses: [{ courseId: regular.id, moduleIds: null }] }),
+    );
     const turma = await body<{ classGroup: { id: string } }>(
       await admin.json("/class-groups", "POST", {
-        courseId, moduleId: n1, name: "Regular N1 · seg 08h", teacherId: profId,
+        courseId: regular.id, moduleId: r1, name: "Regular N1 · seg 08h", teacherId: teacher.id,
         startsOn: hoje, endsOn: daqui90, schedules: [{ weekday: 1, startTime: "08:00" }], generateWeeks: 4,
       }),
     );
@@ -235,7 +241,7 @@ describe("open-entry: a lista não oferece o que a reserva recusa", () => {
   it("aula dentro da janela de antecedência some das vagas", async () => {
     // curso com 48h de antecedência: quase tudo da próxima semana some
     const { course } = await body<{ course: { id: string } }>(
-      await admin.json("/courses", "POST", { name: "Alemão", type: "grupo", cancelNoticeHours: 48 }),
+      await admin.json("/courses", "POST", { name: "Alemão", type: "open_entry", cancelNoticeHours: 48 }),
     );
     const mod = (await body<{ module: { id: string } }>(await admin.json(`/courses/${course.id}/modules`, "POST", { name: "A1" }))).module;
     const { teacher } = await body<{ teacher: { id: string } }>(

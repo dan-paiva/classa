@@ -114,6 +114,15 @@ export type TenantSettings = {
     installments: number;
     dueDay: number;
   };
+  /** Como a escola chama curso, nível, turma e os tipos de curso (DOMINIO.md §4.6). Vazio = padrão. */
+  vocabulary?: {
+    course?: { singular?: string; plural?: string; feminine?: boolean };
+    level?: { singular?: string; plural?: string; feminine?: boolean };
+    classGroup?: { singular?: string; plural?: string; feminine?: boolean };
+    kinds?: { regular?: string; open_entry?: string; particular?: string };
+  };
+  /** A cada `every` presenças em aula open entry, uma aula private de bônus (DOMINIO.md §5.9.1). */
+  bonus?: { enabled: boolean; every: number };
   /** Opcional: escola sem o campo segue o padrão de cada decisão. */
   flows?: {
     /** Área que matricula no fim da entrada do aluno (decisão D16). Padrão: Administrativo. */
@@ -240,7 +249,13 @@ export const auditLog = pgTable(
  * Acadêmico: cursos e módulos
  * ------------------------------------------------------------------------- */
 
-export const COURSE_TYPES = ["grupo", "particular", "hibrido", "workshop", "turmas_dedicadas"] as const;
+/**
+ * Tipo do curso = regra (DOMINIO.md §4.1): regular (turma fixa), open entry (o aluno
+ * reserva aula a aula no nível dele) e particular (private, 1 aluno e 1 professor).
+ * O regime da turma e da matrícula é sempre o tipo do curso. As regras de cada
+ * tipo ficam em `@classa/domain` (COURSE_KIND_RULES).
+ */
+export const COURSE_TYPES = ["regular", "open_entry", "particular"] as const;
 export type CourseType = (typeof COURSE_TYPES)[number];
 
 export const MODALITIES = ["online", "presencial"] as const;
@@ -650,6 +665,8 @@ export const CREDIT_KINDS = [
   "expiracao",
   "ajuste",
   "estorno",
+  /** Aula private ganha pelas presenças no open entry (DOMINIO.md §5.9.1). */
+  "bonus",
 ] as const;
 export type CreditKind = (typeof CREDIT_KINDS)[number];
 
@@ -673,6 +690,33 @@ export const creditEntry = pgTable(
     createdAt: createdAt(),
   },
   (t) => [check("credit_entry_amount_not_zero", sql`${t.amount} <> 0`), index("credit_entry_enrollment_idx").on(t.enrollmentId)],
+);
+
+/**
+ * Aula private de bônus (DOMINIO.md §5.9.1): a cada N presenças em aula open entry
+ * o aluno ganha uma. Fica pendente até existir uma matrícula private ativa; aí
+ * vira um lançamento `bonus` no extrato dela. `milestone` é a ordem do bônus
+ * (1º, 2º...), e o único por aluno impede conceder o mesmo duas vezes.
+ */
+export const bonusLesson = pgTable(
+  "bonus_lesson",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    studentId: uuid("student_id")
+      .notNull()
+      .references(() => student.id),
+    milestone: integer("milestone").notNull(),
+    /** Presenças open entry exigidas por bônus quando ele foi ganho. */
+    every: integer("every").notNull(),
+    enrollmentId: uuid("enrollment_id").references(() => enrollment.id),
+    creditEntryId: uuid("credit_entry_id").references(() => creditEntry.id),
+    appliedAt: tstz("applied_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [unique("bonus_lesson_student_milestone_uq").on(t.studentId, t.milestone), index("bonus_lesson_student_idx").on(t.studentId)],
 );
 
 export const ATTENDANCE_STATUSES = ["inscrito", "cancelou", "presente", "falta"] as const;

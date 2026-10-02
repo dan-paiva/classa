@@ -18,6 +18,7 @@ import { DomainError, invalid, notFound, unprocessable } from "../http/errors.ts
 import type { Db, ServiceContext } from "./context.ts";
 import { isQualified } from "./people.ts";
 import { assertMonthOpen } from "./payroll.ts";
+import { grantBonusTx } from "./bonus.ts";
 
 export async function getLessonRow(db: Db, ctx: ServiceContext, id: string) {
   const [row] = await db
@@ -146,6 +147,10 @@ export async function concludeLesson(ctx: ServiceContext, lessonId: string) {
         actorId: ctx.actorId,
       }));
     if (entries.length) await tx.insert(creditEntry).values(entries);
+    // presença em open entry conta para a aula private bônus (DOMINIO.md §5.9.1)
+    for (const studentId of new Set(roster.filter((r) => r.status === "presente").map((r) => r.studentId))) {
+      await grantBonusTx(tx, ctx, studentId);
+    }
     await audit(tx, {
       tenantId: ctx.tenantId,
       actorId: ctx.actorId,

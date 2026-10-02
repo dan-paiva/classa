@@ -54,11 +54,6 @@ function useFieldOptions(slug: string, flow: FlowKey) {
         return (o.evaluators ?? []).map((p) => ({ value: p.id, label: p.name }));
       case "entrada.suggestedModuleId":
         return (o.modules ?? []).filter((m) => !data.courseId || m.courseId === data.courseId).map((m) => ({ value: m.id, label: m.name }));
-      case "entrada.regime":
-        return [
-          { value: "regular", label: "Regular (turma fixa)" },
-          { value: "open_entry", label: "Open-entry (reserva aula a aula)" },
-        ];
       case "entrada.classGroupId":
         return (o.classGroups ?? [])
           .filter((g) => (!data.courseId || g.courseId === data.courseId) && (!data.suggestedModuleId || g.moduleId === data.suggestedModuleId))

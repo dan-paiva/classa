@@ -1,4 +1,4 @@
-import { and, asc, COURSE_TYPES, course, courseModule, eq, MODALITIES, sql, type Database } from "@classa/db";
+import { and, asc, COURSE_TYPES, course, courseModule, eq, MODALITIES, sql, type CourseType, type Database } from "@classa/db";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../app.ts";
@@ -6,7 +6,7 @@ import { audit } from "../../http/audit.ts";
 import { isUniqueViolation } from "../../http/pg-errors.ts";
 import {authorize} from "../../http/require-tenant.ts";
 import { parseBody } from "../../http/validation.ts";
-import { allowsModules, defaultRules } from "./domain.ts";
+import { allowsModules, defaultRules, fixedCapacity } from "./domain.ts";
 
 const PALETTE = ["#1e46c8", "#a14f9c", "#d13543", "#0f766e", "#b45309", "#6d28d9", "#345c66", "#df9f3e"];
 
@@ -42,9 +42,11 @@ const idParam = z.uuid();
 const conflict = (field: string, message: string) => ({ error: "conflict", issues: { [field]: [message] } }) as const;
 const notFound = { error: "not_found" } as const;
 
-function particularCapacityError(type: string, capacity: number | undefined) {
-  return type === "particular" && capacity !== undefined && capacity !== 1
-    ? { error: "validation", issues: { capacity: ["Curso particular tem sempre 1 aluno por aula"] } }
+/** O tipo pode fixar os alunos por aula (private = 1): a escola não muda isso. */
+function fixedCapacityError(type: CourseType, capacity: number | undefined) {
+  const fixed = fixedCapacity(type);
+  return fixed !== null && capacity !== undefined && capacity !== fixed
+    ? { error: "validation", issues: { capacity: [`Este tipo de curso tem sempre ${fixed} aluno por aula`] } }
     : null;
 }
 
@@ -84,7 +86,7 @@ export const courseRoutes = new Hono<AppEnv>()
     if (error) return error;
     const { db, tenant, user } = c.var;
 
-    const capacityError = particularCapacityError(data.type, data.capacity);
+    const capacityError = fixedCapacityError(data.type, data.capacity);
     if (capacityError) return c.json(capacityError, 400);
 
     const [{ total } = { total: 0 }] = await db
@@ -118,7 +120,7 @@ export const courseRoutes = new Hono<AppEnv>()
     const { data, error } = await parseBody(c, updateCourseInput);
     if (error) return error;
 
-    const capacityError = particularCapacityError(found.type, data.capacity);
+    const capacityError = fixedCapacityError(found.type, data.capacity);
     if (capacityError) return c.json(capacityError, 400);
 
     try {
@@ -154,7 +156,7 @@ export const courseRoutes = new Hono<AppEnv>()
     const found = await findCourse(db, tenant.id, c.req.param("id"));
     if (!found) return c.json(notFound, 404);
     if (!allowsModules(found.type)) {
-      return c.json({ error: "unprocessable", message: "Este tipo de curso não se divide em módulos" }, 422);
+      return c.json({ error: "unprocessable", message: "Curso private não se divide em níveis" }, 422);
     }
     const { data, error } = await parseBody(c, moduleInput);
     if (error) return error;
@@ -177,7 +179,7 @@ export const courseRoutes = new Hono<AppEnv>()
       });
       return c.json({ module: created }, 201);
     } catch (err) {
-      if (isUniqueViolation(err)) return c.json(conflict("name", "Este curso já tem um módulo com esse nome"), 409);
+      if (isUniqueViolation(err)) return c.json(conflict("name", "Este curso já tem um nível com esse nome"), 409);
       throw err;
     }
   })
@@ -203,7 +205,7 @@ export const courseRoutes = new Hono<AppEnv>()
       });
       return c.json({ module: updated });
     } catch (err) {
-      if (isUniqueViolation(err)) return c.json(conflict("name", "Este curso já tem um módulo com esse nome"), 409);
+      if (isUniqueViolation(err)) return c.json(conflict("name", "Este curso já tem um nível com esse nome"), 409);
       throw err;
     }
   })

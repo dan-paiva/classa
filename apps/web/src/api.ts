@@ -1,3 +1,4 @@
+import { COURSE_KINDS, hasLevels, type CourseKind } from "@classa/domain";
 export type Role = "admin";
 export type ProfileType = "admin" | "colaborador" | "prestador" | "aluno";
 export type Membership = {
@@ -15,18 +16,12 @@ export type Membership = {
 export type Me = { user: { id: string; name: string; email: string }; memberships: Membership[] };
 export type FieldIssues = Record<string, string[] | undefined>;
 
-export const COURSE_TYPES = ["grupo", "particular", "hibrido", "workshop", "turmas_dedicadas"] as const;
-export type CourseType = (typeof COURSE_TYPES)[number];
-export const COURSE_TYPE_LABELS: Record<CourseType, string> = {
-  grupo: "Em grupo",
-  particular: "Particular",
-  hibrido: "Híbrido",
-  workshop: "Workshop",
-  turmas_dedicadas: "Turmas dedicadas",
-};
+/** Tipo do curso = regra (DOMINIO.md §4.1). O nome que aparece vem do vocabulário da escola. */
+export const COURSE_TYPES = COURSE_KINDS;
+export type CourseType = CourseKind;
 export const MODALITIES = ["online", "presencial"] as const;
 export type Modality = (typeof MODALITIES)[number];
-export const allowsModules = (type: CourseType) => type === "grupo" || type === "turmas_dedicadas";
+export const allowsModules = (type: CourseType) => hasLevels(type);
 
 export type CourseModule = {
   id: string;

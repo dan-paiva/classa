@@ -10,3 +10,5 @@ export * from "./payroll.ts";
 export * from "./company.ts";
 export * from "./workflows.ts";
 export * from "./access.ts";
+export * from "./course-types.ts";
+export * from "./vocabulary.ts";

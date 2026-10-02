@@ -54,7 +54,7 @@ const levelingAt = (() => {
 beforeAll(async () => {
   t = await createTestApp({ allowedSignupEmails: ["admin@entrada.classa.dev"] });
   admin = await t.adminOf("entrada");
-  const { course } = await body<{ course: { id: string } }>(await admin.json("/courses", "POST", { name: "Inglês", type: "grupo" }));
+  const { course } = await body<{ course: { id: string } }>(await admin.json("/courses", "POST", { name: "Inglês", type: "regular" }));
   courseId = course.id;
   n1 = (await body<{ module: { id: string } }>(await admin.json(`/courses/${courseId}/modules`, "POST", { name: "Nível 1" }))).module.id;
   n2 = (await body<{ module: { id: string } }>(await admin.json(`/courses/${courseId}/modules`, "POST", { name: "Nível 2" }))).module.id;
@@ -156,7 +156,7 @@ describe("entrada do aluno", () => {
     // agora o administrativo vê e completa a matrícula
     expect((await board(adm)).find((c) => c.id === card.id)?.canOperate).toBe(true);
     expect((await move(adm, card.id, "matricula")).status).toBe(422); // falta regime
-    await body(await patch(adm, card.id, { regime: "regular", classGroupId: turmaN2 }));
+    await body(await patch(adm, card.id, { classGroupId: turmaN2 }));
     await body(await move(adm, card.id, "matricula"));
 
     // pós-venda: o CX puxa as boas-vindas e manda o material
@@ -292,12 +292,12 @@ describe("área que matricula é da escola (D16)", () => {
 
     // o administrativo não tem mais etapa nenhuma na entrada: o fluxo some para ele
     expect((await adm("/flows/entrada/cards")).status).toBe(403);
-    await body(await patch(com, card.id, { regime: "open_entry" }));
+    await body(await patch(com, card.id, { classGroupId: turmaN2 }));
     await body(await move(com, card.id, "matricula"));
-    const { enrollments } = await body<{ enrollments: { regime: string; moduleId: string; levelPending: boolean }[] }>(
+    const { enrollments } = await body<{ enrollments: { regime: string; classGroupId: string; levelPending: boolean }[] }>(
       await admin.json(`/enrollments?studentId=${card.data.studentId ?? (await body<{ card: Card }>(await admin.json(`/cards/${card.id}`))).card.data.studentId}`),
     );
-    expect(enrollments).toEqual([expect.objectContaining({ regime: "open_entry", moduleId: n1, levelPending: false })]);
+    expect(enrollments).toEqual([expect.objectContaining({ regime: "regular", classGroupId: turmaN2, levelPending: false })]);
 
     await body(await admin.json("/settings/flows", "PATCH", { entryEnrollmentArea: "adm" }));
   });

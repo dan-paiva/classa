@@ -34,7 +34,7 @@ let teacherCookie = "";
 beforeAll(async () => {
   t = await createTestApp({ allowedSignupEmails: ["admin@agenda.classa.dev"] });
   admin = await t.adminOf("agenda");
-  const { course } = await body<{ course: { id: string } }>(await admin.json("/courses", "POST", { name: "Inglês", type: "grupo" }));
+  const { course } = await body<{ course: { id: string } }>(await admin.json("/courses", "POST", { name: "Inglês", type: "regular" }));
   courseId = course.id;
   moduleId = (await body<{ module: { id: string } }>(await admin.json(`/courses/${courseId}/modules`, "POST", { name: "Nível 1" }))).module.id;
   const mk = async (name: string, email: string) =>

@@ -96,7 +96,7 @@ export function Agenda() {
             [
               ["tudo", "Tudo"],
               ["minha", "Minha agenda"],
-              ["vagas", "Vagas open-entry"],
+              ["vagas", "Vagas open entry"],
             ] as const
           ).map(([key, label]) => (
             <button key={key} type="button" role="tab" aria-selected={preset === key} className={preset === key ? "tab on" : "tab"} onClick={() => setPreset(key)}>

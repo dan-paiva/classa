@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { school, type Enrollment, type OpenSlot } from "../api-school.ts";
 import { fmtShortDate, fmtTime, fmtWeekday } from "../lib/format.ts";
+import { useVocab } from "../lib/vocabulary.ts";
 import { ActionError, Badge, Empty, Field, LoadError, Loading, PageHead, Stat } from "../ui.tsx";
 
 /**
@@ -15,14 +16,15 @@ export function OpenSlots() {
   const [enrollmentId, setEnrollmentId] = useState("");
   const enrollments = useQuery({ queryKey: ["enrollments", slug, "open"], queryFn: () => school.enrollments(slug, { active: "1" }) });
 
+  const v = useVocab();
   const open = (enrollments.data?.enrollments ?? []).filter((e) => e.regime === "open_entry");
   const chosen = open.find((e) => e.id === enrollmentId);
 
   return (
     <div className="stack-lg">
       <PageHead
-        title="Vagas open-entry"
-        subtitle="No open-entry o aluno não tem turma fixa: ele pega as vagas do nível dele, aula a aula."
+        title={`Vagas ${v.kind("open_entry")}`}
+        subtitle={`No ${v.kind("open_entry")} o aluno não fica preso a horário: escolhe, aula a aula, os horários do ${v.lower("level")} dele que já têm professor.`}
       />
 
       {enrollments.isPending ? (
@@ -31,21 +33,21 @@ export function OpenSlots() {
         <LoadError error={enrollments.error} />
       ) : open.length === 0 ? (
         <Empty>
-          Nenhuma matrícula open-entry ativa. Crie uma na ficha do aluno, escolhendo o regime open-entry, e publique ofertas em{" "}
+          Nenhuma matrícula {v.kind("open_entry")} ativa. Matricule o aluno num {v.lower("course")} do tipo {v.kind("open_entry")} pela ficha dele e publique horários em{" "}
           <Link to="/e/$slug/turmas" params={{ slug }}>
-            Turmas
+            {v.classGroup.plural}
           </Link>
           .
         </Empty>
       ) : (
         <>
           <div className="panel stack">
-            <Field label="Aluno" htmlFor="oe-enrollment" hint="Só matrículas open-entry ativas.">
+            <Field label="Aluno" htmlFor="oe-enrollment" hint={`Só matrículas ${v.kind("open_entry")} ativas.`}>
               <select id="oe-enrollment" value={enrollmentId} onChange={(e) => setEnrollmentId(e.target.value)}>
                 <option value="">Escolha…</option>
                 {open.map((e) => (
                   <option key={e.id} value={e.id}>
-                    {e.studentName} · {e.courseName} · {e.moduleName ?? "sem nível"}
+                    {e.studentName} · {e.courseName} · {e.moduleName ?? `sem ${v.lower("level")}`}
                   </option>
                 ))}
               </select>
@@ -69,6 +71,7 @@ function SlotsFor({ slug, enrollment }: { slug: string; enrollment: Enrollment }
     },
   });
 
+  const v = useVocab();
   if (q.isPending) return <Loading />;
   if (q.isError) return <LoadError error={q.error} />;
   const slots = q.data.slots;
@@ -77,7 +80,7 @@ function SlotsFor({ slug, enrollment }: { slug: string; enrollment: Enrollment }
   return (
     <section className="stack-lg">
       <div className="stats">
-        <Stat label="Nível" value={enrollment.moduleName ?? "—"} hint={enrollment.courseName} />
+        <Stat label={v.level.singular} value={enrollment.moduleName ?? "—"} hint={enrollment.courseName} />
         <Stat label="Saldo de aulas" value={enrollment.balance} tone={enrollment.balance <= 0 ? "danger" : undefined} />
         <Stat label="Já reservadas" value={minhas} hint="contam no saldo" />
         <Stat label="Vagas abertas" value={slots.filter((s) => !s.full && !s.mine).length} />
@@ -87,9 +90,9 @@ function SlotsFor({ slug, enrollment }: { slug: string; enrollment: Enrollment }
 
       {slots.length === 0 ? (
         <Empty>
-          Nenhuma aula publicada no nível {enrollment.moduleName ?? "desta matrícula"}. Crie uma oferta open-entry desse módulo em{" "}
+          Nenhuma aula publicada em {enrollment.moduleName ?? "este nível"}. Crie um horário desse {v.lower("level")} em{" "}
           <Link to="/e/$slug/turmas" params={{ slug }}>
-            Turmas
+            {v.classGroup.plural}
           </Link>
           .
         </Empty>

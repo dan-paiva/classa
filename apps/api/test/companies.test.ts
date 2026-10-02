@@ -35,7 +35,7 @@ beforeAll(async () => {
   base = { db, tenantId: t!.id, actorId: null, timezone: "America/Sao_Paulo", settings: DEFAULT_TENANT_SETTINGS };
   const ctx = at("2026-09-01T12:00:00Z");
   const mk = async (name: string) => {
-    const [c] = await db.insert(course).values({ tenantId: t!.id, name, type: "grupo", color: "#123456", capacity: 8, lessonMinutes: 60, packageLessons: 10, cancelNoticeHours: 6, lessonPriceCents: 10000, modalities: ["online"] }).returning();
+    const [c] = await db.insert(course).values({ tenantId: t!.id, name, type: "regular", color: "#123456", capacity: 8, lessonMinutes: 60, packageLessons: 10, cancelNoticeHours: 6, lessonPriceCents: 10000, modalities: ["online"] }).returning();
     const [m] = await db.insert(courseModule).values({ tenantId: t!.id, courseId: c!.id, name: "N1", color: "#123456", position: 1 }).returning();
     return { c: c!, m: m! };
   };

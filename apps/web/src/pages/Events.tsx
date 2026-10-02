@@ -296,7 +296,7 @@ export function EventDetail() {
                 )}
                 {e.suggestedModuleName && (
                   <>
-                    <dt>Módulo sugerido</dt>
+                    <dt>Nível sugerido</dt>
                     <dd>{e.suggestedModuleName}</dd>
                   </>
                 )}
@@ -368,7 +368,7 @@ function LevelingResult({ slug, event, onSaved }: { slug: string; event: AgendaE
       <h2>Resultado do nivelamento</h2>
       <p className="muted small">O resultado orienta a matrícula. Ele não matricula ninguém e não muda o nível de quem já é aluno.</p>
       <div className="grid-fields">
-        <Field label="Módulo sugerido" htmlFor="lv-module" errors={issuesOf(save.error).suggestedModuleId}>
+        <Field label="Nível sugerido" htmlFor="lv-module" errors={issuesOf(save.error).suggestedModuleId}>
           <select id="lv-module" value={moduleId} onChange={(e) => setModuleId(e.target.value)}>
             <option value="">Escolha…</option>
             {options.map((o) => (

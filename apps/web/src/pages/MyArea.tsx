@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "@tanstack/react-router";
 import { useState } from "react";
 import { school } from "../api-school.ts";
+import { useVocab } from "../lib/vocabulary.ts";
 import { fmtIsoDate, fmtLongDay, fmtShortDate, fmtTime, fmtWeekday, money } from "../lib/format.ts";
 import { InstallmentBadge, UsageBar } from "../status.tsx";
 import { ActionError, Badge, ColorDot, LoadError, Loading, PageHead, Stat } from "../ui.tsx";
@@ -11,6 +12,8 @@ export function MyArea() {
   const { slug } = useParams({ strict: false }) as { slug: string };
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["my-area", slug], queryFn: () => school.myArea(slug) });
+  const bonus = useQuery({ queryKey: ["my-bonus", slug], queryFn: () => school.myBonus(slug) });
+  const v = useVocab();
   const act = useMutation({
     mutationFn: ({ id, action }: { id: string; action: "cancelar" | "reagendar" }) => school.myLesson(slug, id, action),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["my-area", slug] }),
@@ -32,6 +35,14 @@ export function MyArea() {
         <Stat label="Aulas restantes" value={active.reduce((s, e) => s + e.balance, 0)} />
         <Stat label="Próxima aula" value={upcoming[0] ? `${fmtWeekday(upcoming[0].startsAt)} ${fmtTime(upcoming[0].startsAt)}` : "—"} hint={upcoming[0] ? fmtShortDate(upcoming[0].startsAt) : undefined} />
         <Stat label="Em aberto" value={money(open.reduce((s, i) => s + i.amountCents - i.paidCents, 0))} tone={installments.some((i) => i.status === "vencida") ? "danger" : undefined} />
+        {bonus.data?.bonus.rule.enabled && (bonus.data.bonus.presences > 0 || bonus.data.bonus.earned > 0) && (
+          <Stat
+            label={`Aulas ${v.kind("particular")} de bônus`}
+            value={bonus.data.bonus.earned}
+            tone={bonus.data.bonus.pending ? "warn" : "ok"}
+            hint={`Faltam ${bonus.data.bonus.nextIn} aula(s) ${v.kind("open_entry")} para a próxima${bonus.data.bonus.pending ? ` · ${bonus.data.bonus.pending} a agendar com a escola` : ""}`}
+          />
+        )}
       </div>
 
       <LevelingsPanel slug={slug} />
@@ -113,7 +124,7 @@ export function MyArea() {
                   <Badge tone="warn">Aguardando nivelamento</Badge>
                 ) : e.className ?? (
                   <>
-                    <Badge tone="info">Open-entry</Badge> {e.moduleName ?? "sem nível"}
+                    <Badge tone="info">{v.kind("open_entry")}</Badge> {e.moduleName ?? `sem ${v.lower("level")}`}
                   </>
                 )}{" "}
                 · contrato até {fmtIsoDate(e.endsOn)} {e.endedAt && <Badge tone="muted">Encerrada</Badge>}

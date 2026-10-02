@@ -8,6 +8,7 @@ import {
   enrollment,
   eq,
   isNull,
+  ne,
   lead,
   lesson,
   lessonStudent,
@@ -22,6 +23,7 @@ import {
 } from "@classa/db";
 import {
   addDays,
+  hasLevels,
   checkRequires,
   dateInZone,
   ENTRY_MAX_NO_SHOWS,
@@ -266,6 +268,9 @@ const ENTRY_EFFECTS: Record<string, Effect> = {
   },
   nivelado: async (ctx, d) => {
     if (!str(d.eventId)) throw unprocessable("O card não tem nivelamento marcado. Volte para Nivelamento a marcar.");
+    // curso private não tem níveis; nos outros o nível sugerido é o resultado do nivelamento
+    const [c] = await ctx.db.select({ type: course.type }).from(course).where(and(eq(course.id, str(d.courseId)), eq(course.tenantId, ctx.tenantId)));
+    if (c && hasLevels(c.type) && !str(d.suggestedModuleId)) throw unprocessable("Para Nivelado, preencha: Nível sugerido.");
     await recordLevelingResult(ctx, str(d.eventId), { suggestedModuleId: str(d.suggestedModuleId), resultNotes: str(d.levelingNotes) || null });
     return { note: "Resultado gravado no nivelamento." };
   },
@@ -292,14 +297,15 @@ const ENTRY_EFFECTS: Record<string, Effect> = {
     return { note: primeira ? "Primeira parcela paga." : "Sem parcela para o aluno: quem paga é a empresa." };
   },
   matricula: async (ctx, d) => {
-    const regime = str(d.regime);
-    if (regime !== "regular" && regime !== "open_entry") throw invalid("regime", "Escolha o regime: regular ou open-entry");
-    if (regime === "regular" && !str(d.classGroupId)) throw unprocessable("Para Matrícula completa no regime regular, preencha: Turma.");
     if (!str(d.enrollmentId)) throw unprocessable("O card não tem matrícula aberta. Volte para Fechado.");
+    // o formato vem do tipo do curso (DOMINIO.md §4.1): open entry fica no nível; regular e private, numa turma
+    const [c] = await ctx.db.select({ type: course.type }).from(course).where(and(eq(course.id, str(d.courseId)), eq(course.tenantId, ctx.tenantId)));
+    const openEntry = c?.type === "open_entry";
+    if (openEntry && !str(d.suggestedModuleId)) throw unprocessable("Para Matrícula completa no open entry, preencha: Nível sugerido.");
+    if (!openEntry && !str(d.classGroupId)) throw unprocessable("Para Matrícula completa, preencha: Turma.");
     await completeEnrollmentLevel(ctx, str(d.enrollmentId), {
-      regime,
-      classGroupId: regime === "regular" ? str(d.classGroupId) : null,
-      moduleId: regime === "open_entry" ? str(d.suggestedModuleId) : null,
+      classGroupId: openEntry ? null : str(d.classGroupId),
+      moduleId: openEntry ? str(d.suggestedModuleId) : null,
     });
     await ctx.db.update(lead).set({ stage: "matriculado", stageChangedAt: ctx.now }).where(eq(lead.id, str(d.leadId)));
     return { note: "Matrícula completa: o aluno entrou nas aulas." };
@@ -755,7 +761,7 @@ export async function flowOptions(ctx: ServiceContext, flowKey: string) {
       return {
         leads: leads.map((l) => ({ id: l.id, name: l.name, cpf: l.cpf, email: l.email, courseId: l.courseId, busy: busy.has(l.id) })),
         courses: await ctx.db
-          .select({ id: course.id, name: course.name })
+          .select({ id: course.id, name: course.name, type: course.type })
           .from(course)
           .where(and(eq(course.tenantId, ctx.tenantId), isNull(course.deactivatedAt)))
           .orderBy(asc(course.name)),
@@ -769,7 +775,7 @@ export async function flowOptions(ctx: ServiceContext, flowKey: string) {
         classGroups: await ctx.db
           .select({ id: classGroup.id, name: classGroup.name, courseId: classGroup.courseId, moduleId: classGroup.moduleId })
           .from(classGroup)
-          .where(and(eq(classGroup.tenantId, ctx.tenantId), eq(classGroup.regime, "regular"), isNull(classGroup.deactivatedAt)))
+          .where(and(eq(classGroup.tenantId, ctx.tenantId), ne(classGroup.regime, "open_entry"), isNull(classGroup.deactivatedAt)))
           .orderBy(asc(classGroup.name)),
         lostReasons: LEAD_LOST_REASONS,
       };

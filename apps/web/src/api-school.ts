@@ -1,3 +1,4 @@
+import type { BonusRule, Vocabulary } from "@classa/domain";
 import { patch, post, request, type Modality } from "./api.ts";
 
 /* -------------------------------------------------------------------- pessoas */
@@ -92,16 +93,10 @@ export type Schedule = { weekday: number; startTime: string };
 /** Como o aluno se liga à turma. Não confundir com modalidade (online/presencial). */
 export const CLASS_REGIMES = ["regular", "open_entry", "particular"] as const;
 export type ClassRegime = (typeof CLASS_REGIMES)[number];
-export const REGIME_LABELS: Record<ClassRegime, string> = {
-  regular: "Turma regular",
-  open_entry: "Open-entry",
-  particular: "Particular",
-};
-export const REGIME_HINTS: Record<ClassRegime, string> = {
-  regular: "O aluno pertence à turma e entra em todas as aulas dela.",
-  open_entry: "Ninguém fica preso à turma: as vagas ficam abertas e o aluno reserva aula a aula, no nível dele.",
-  particular: "Turma de uma vaga, criada na alocação da matrícula.",
-};
+
+/** Vocabulário da escola e regra da aula bônus (DOMINIO.md §4.6 e §5.9.1). */
+export type SchoolSettings = { vocabulary: Vocabulary; custom: Partial<Vocabulary>; bonus: BonusRule };
+export type BonusSummary = { rule: BonusRule; presences: number; earned: number; applied: number; pending: number; nextIn: number | null };
 
 /** Uma aula open-entry com vaga, do ponto de vista de uma matrícula. */
 export type OpenSlot = {
@@ -233,6 +228,7 @@ export const CREDIT_KIND_LABELS: Record<string, string> = {
   contratacao: "Contratação",
   renovacao: "Renovação",
   promocional: "Crédito promocional",
+  bonus: "Aula private bônus",
   devolucao: "Devolução",
   presenca: "Presença",
   falta: "Falta",
@@ -665,6 +661,11 @@ export const school = {
 
   flows: (slug: string) => request<{ openCounts: Record<string, number>; stageAreas: Record<string, Record<string, string>> }>(`${t(slug)}/flows`),
   saveFlowSettings: (slug: string, input: { entryEnrollmentArea: string }) => request(`${t(slug)}/settings/flows`, patch(input)),
+  schoolSettings: (slug: string) => request<SchoolSettings>(`${t(slug)}/settings/school`),
+  saveVocabulary: (slug: string, input: Partial<Vocabulary>) => request<{ vocabulary: Vocabulary }>(`${t(slug)}/settings/vocabulary`, patch(input)),
+  saveBonus: (slug: string, input: BonusRule) => request<{ bonus: BonusRule }>(`${t(slug)}/settings/bonus`, patch(input)),
+  studentBonus: (slug: string, id: string) => request<{ bonus: BonusSummary }>(`${t(slug)}/students/${id}/bonus`),
+  myBonus: (slug: string) => request<{ bonus: BonusSummary }>(`${t(slug)}/minha-area/bonus`),
   cards: (slug: string, flow: string) => request<{ cards: WorkflowCard[] }>(`${t(slug)}/flows/${flow}/cards`),
   flowOptions: (slug: string, flow: string) => request<{ options: FlowOptions }>(`${t(slug)}/flows/${flow}/options`),
   renewalQueue: (slug: string) => request<{ queue: RenewalItem[] }>(`${t(slug)}/renewal-queue`),

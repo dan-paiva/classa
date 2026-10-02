@@ -122,12 +122,13 @@ function readPrototype(path: string): { cad: Cad; students: ProtoStudent[] } {
 
 /* ------------------------------------------------------------ correspondências */
 
+/** O protótipo tinha cinco tipos; no Classa o tipo é a regra (DOMINIO.md §4.1): só particular muda de comportamento. */
 const COURSE_TYPE: Record<string, CourseType> = {
-  "Em grupo": "grupo",
+  "Em grupo": "regular",
   Particular: "particular",
-  Híbrido: "hibrido",
-  Workshop: "workshop",
-  "Turmas dedicadas": "turmas_dedicadas",
+  Híbrido: "regular",
+  Workshop: "regular",
+  "Turmas dedicadas": "regular",
 };
 const ROOM_KIND = (r: CadRoom): RoomKind => (r.zoom || /virtual|zoom|online/i.test(r.tipo ?? "") ? "virtual" : /auditório|auditorio/i.test(r.tipo ?? "") ? "auditorio" : "presencial");
 const STUDENT_STATUS: Record<string, string> = { Ativo: "ativo", Suspenso: "suspenso", Congelado: "congelado", Inadimplente: "inadimplente", Cancelado: "cancelado", Inativo: "inativo" };
