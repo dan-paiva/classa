@@ -1,4 +1,6 @@
+import { COURSE_KIND_RULES } from "@classa/domain";
 import { MODALITIES, type CourseRulesInput, type CourseType, type FieldIssues, type Modality } from "../api.ts";
+import { useVocab } from "../lib/vocabulary.ts";
 import { Field } from "../ui.tsx";
 
 /** Estado do formulário: números como texto, para o campo poder ficar vazio enquanto a pessoa digita. */
@@ -25,6 +27,8 @@ export function RulesFields({
   issues: FieldIssues;
   type: CourseType;
 }) {
+  const v = useVocab();
+  const fixed = COURSE_KIND_RULES[type].fixedCapacity;
   const set = (key: keyof RulesDraft) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...draft, [key]: e.target.value });
 
@@ -34,13 +38,13 @@ export function RulesFields({
         label="Alunos por aula"
         htmlFor="capacity"
         errors={issues.capacity}
-        hint={type === "particular" ? "Particular é sempre 1." : undefined}
+        hint={fixed !== null ? `${v.kind(type)} é sempre ${fixed}.` : type === "open_entry" ? "Por horário: quanta gente cabe em cada aula." : undefined}
       >
         <input
           id="capacity"
           inputMode="numeric"
-          value={type === "particular" ? "1" : draft.capacity}
-          disabled={type === "particular"}
+          value={fixed !== null ? String(fixed) : draft.capacity}
+          disabled={fixed !== null}
           onChange={set("capacity")}
         />
       </Field>
@@ -54,7 +58,7 @@ export function RulesFields({
         label="Cancelar com antecedência (h)"
         htmlFor="cancelNoticeHours"
         errors={issues.cancelNoticeHours}
-        hint="Até quantas horas antes o aluno cancela sem perder a aula."
+        hint={type === "open_entry" ? "Até quantas horas antes o aluno cancela sem perder a aula. A reserva fecha no mesmo prazo." : "Até quantas horas antes o aluno cancela sem perder a aula."}
       >
         <input id="cancelNoticeHours" inputMode="numeric" value={draft.cancelNoticeHours} onChange={set("cancelNoticeHours")} />
       </Field>
@@ -83,19 +87,21 @@ export function RulesFields({
         </div>
         {issues.modalities?.[0] && <small className="error">{issues.modalities[0]}</small>}
       </fieldset>
-      <fieldset className="field">
-        <legend>Quem marca a aula open-entry</legend>
-        <label className="check" htmlFor="autoAgenda">
-          <input
-            id="autoAgenda"
-            type="checkbox"
-            checked={draft.autoAgenda}
-            onChange={(e) => onChange({ ...draft, autoAgenda: e.target.checked })}
-          />
-          O próprio aluno reserva
-        </label>
-        <small>Desmarcado, só a secretaria marca. Vale só para turmas open-entry deste curso.</small>
-      </fieldset>
+      {COURSE_KIND_RULES[type].studentBooks && (
+        <fieldset className="field">
+          <legend>Quem marca a aula</legend>
+          <label className="check" htmlFor="autoAgenda">
+            <input
+              id="autoAgenda"
+              type="checkbox"
+              checked={draft.autoAgenda}
+              onChange={(e) => onChange({ ...draft, autoAgenda: e.target.checked })}
+            />
+            O próprio aluno reserva pela área dele
+          </label>
+          <small>Desmarcado, só a secretaria marca os horários para o aluno.</small>
+        </fieldset>
+      )}
     </div>
   );
 }
@@ -116,7 +122,7 @@ export function draftFromRules(r: CourseRulesInput): RulesDraft {
 export function rulesFromDraft(d: RulesDraft, type: CourseType, parseReais: (s: string) => number | null): CourseRulesInput {
   const int = (s: string) => (s.trim() === "" ? Number.NaN : Number(s));
   return {
-    capacity: type === "particular" ? 1 : int(d.capacity),
+    capacity: COURSE_KIND_RULES[type].fixedCapacity ?? int(d.capacity),
     lessonMinutes: int(d.lessonMinutes),
     packageLessons: int(d.packageLessons),
     cancelNoticeHours: int(d.cancelNoticeHours),

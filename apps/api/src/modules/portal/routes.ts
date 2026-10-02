@@ -3,12 +3,14 @@ import { Hono } from "hono";
 import type { AppEnv } from "../../app.ts";
 import { DomainError } from "../../http/errors.ts";
 import {} from "../../http/require-tenant.ts";
+import { bonusSummary } from "../../services/bonus.ts";
 import { contextFrom } from "../../services/context.ts";
 import { getEnrollmentRow, listEnrollments } from "../../services/enrollments.ts";
 import { availableCredits, listOpenSlots, reserveLesson } from "../../services/open-entry.ts";
 import { listInstallments } from "../../services/finance.ts";
 import { cancelStudentLesson } from "../../services/lessons.ts";
 import { listLessons } from "../../services/schedule.ts";
+import { studentMaterials } from "../../services/materials.ts";
 import { primaryEmailSql } from "../../services/people.ts";
 
 /**
@@ -45,6 +47,8 @@ export const portalRoutes = new Hono<AppEnv>()
       student: s,
       enrollments: enrollments.map(({ studentStatus: _s, ...e }) => e),
       installments,
+      // o que o CX entregou no pós-venda (DOMINIO.md §4.5)
+      materials: await studentMaterials(ctx, studentId),
       lessons: lessons.map((l) => ({
         id: l.id,
         startsAt: l.startsAt,
@@ -61,6 +65,13 @@ export const portalRoutes = new Hono<AppEnv>()
         cancelledInTime: byLesson.get(l.id)?.cancelledInTime,
       })),
     });
+  })
+  /** Aulas private bônus que o aluno ganhou e quanto falta para a próxima. */
+  .get("/minha-area/bonus", async (c) => {
+    const ctx = contextFrom(c);
+    const studentId = ownStudentId(c);
+    if (!studentId) throw new DomainError(404, "not_found", "Seu usuário não está ligado a um aluno desta escola.");
+    return c.json({ bonus: await bonusSummary(ctx, studentId) });
   })
   /* ------------------------------------------- open-entry: as vagas do aluno */
 

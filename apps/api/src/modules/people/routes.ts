@@ -8,6 +8,7 @@ import {authorize, requireAdmin} from "../../http/require-tenant.ts";
 import { parseBody } from "../../http/validation.ts";
 import { contextFrom } from "../../services/context.ts";
 import { listEnrollments } from "../../services/enrollments.ts";
+import { bonusSummary } from "../../services/bonus.ts";
 import { listInstallments } from "../../services/finance.ts";
 import {
   createRoom,
@@ -126,6 +127,15 @@ export const peopleRoutes = new Hono<AppEnv>()
     return c.json({
       students: rows.map((r) => ({ ...r.student, person: { ...r.person, email: r.email }, companyName: r.companyName, activeEnrollments: r.activeEnrollments, balance: r.balance, overdueInstallments: r.overdue })),
     });
+  })
+
+  /** Aulas private bônus do aluno pelas presenças no open entry (DOMINIO.md §5.9.1). */
+  .get("/students/:id/bonus", authorize("alunos", "ver"), async (c) => {
+    const ctx = contextFrom(c);
+    const id = uuid.safeParse(c.req.param("id"));
+    if (!id.success) throw invalid("id", "Aluno não encontrado");
+    const s = await getStudentRow(ctx.db, ctx, id.data);
+    return c.json({ bonus: await bonusSummary(ctx, s.id) });
   })
 
   .get("/students/:id", authorize("alunos", "ver"), async (c) => {

@@ -22,14 +22,13 @@ import {
   type Modality,
   type ClassRegime,
 } from "@classa/db";
-import { addDays, dateInZone, fitsAvailability, generateLessonSlots, nationalHolidays } from "@classa/domain";
+import { addDays, COURSE_KIND_RULES, dateInZone, fitsAvailability, generateLessonSlots, nationalHolidays } from "@classa/domain";
 import { audit } from "../http/audit.ts";
 import { conflict, invalid, notFound, unprocessable } from "../http/errors.ts";
 import { isUniqueViolation, pgErrorCode } from "../http/pg-errors.ts";
 import type { Db, ServiceContext } from "./context.ts";
 import { isQualified } from "./people.ts";
 
-const allowsModules = (type: string) => type === "grupo" || type === "turmas_dedicadas";
 
 /* ---------------------------------------------------------------- feriados */
 
@@ -127,23 +126,37 @@ export async function validateClassGroup(db: Db, ctx: ServiceContext, input: Cla
   }
   if (input.endsOn < input.startsOn) throw invalid("endsOn", "O fim precisa ser depois do início");
 
+  // o tipo do curso é a regra: ele decide o regime da turma, os níveis e as vagas (DOMINIO.md §4.1)
+  const rules = COURSE_KIND_RULES[c.type];
+  const regime: ClassRegime = c.type;
+  if (input.regime && input.regime !== regime) {
+    throw invalid("regime", "O formato da turma vem do tipo do curso: crie a turma num curso desse tipo.");
+  }
+  if (input.individual && regime !== "particular") throw invalid("regime", "Aula particular é de um curso private.");
+
   let moduleId = input.moduleId ?? null;
-  if (allowsModules(c.type)) {
-    if (!moduleId) throw invalid("moduleId", c.type === "turmas_dedicadas" ? "Escolha a turma do contrato" : "Escolha o módulo");
-    const [m] = await db.select().from(courseModule).where(and(eq(courseModule.id, moduleId), eq(courseModule.courseId, c.id)));
-    if (!m) throw invalid("moduleId", "Módulo não pertence ao curso");
-    if (m.deactivatedAt) throw invalid("moduleId", "Módulo inativo");
-  } else {
+  if (rules.levels === "nao") {
     moduleId = null;
+  } else {
+    const levels = await db
+      .select({ id: courseModule.id })
+      .from(courseModule)
+      .where(and(eq(courseModule.courseId, c.id), isNull(courseModule.deactivatedAt)));
+    if (!moduleId && rules.levels === "obrigatorio") {
+      throw invalid("moduleId", levels.length ? "Escolha o nível: é ele que o aluno vai reservar." : "Cadastre ao menos um nível no curso antes de publicar horários.");
+    }
+    if (!moduleId && levels.length) throw invalid("moduleId", "Escolha o nível");
+    if (moduleId) {
+      const [m] = await db.select().from(courseModule).where(and(eq(courseModule.id, moduleId), eq(courseModule.courseId, c.id)));
+      if (!m) throw invalid("moduleId", "Nível não pertence ao curso");
+      if (m.deactivatedAt) throw invalid("moduleId", "Nível inativo");
+    }
   }
 
   const modality = input.modality ?? c.modalities[0]!;
   if (!c.modalities.includes(modality)) throw invalid("modality", "Modalidade não aceita por este curso");
 
-  // `individual` continua aceito por compatibilidade: é o regime particular dito de outro jeito
-  const regime: ClassRegime = c.type === "particular" || input.individual ? "particular" : (input.regime ?? "regular");
-  if (regime === "open_entry" && !moduleId) throw invalid("regime", "Oferta open-entry precisa de um módulo: é o nível que o aluno vai reservar.");
-  const capacity = regime === "particular" ? 1 : (input.capacity ?? c.capacity);
+  const capacity = rules.fixedCapacity ?? input.capacity ?? c.capacity;
   if (capacity < 1) throw invalid("capacity", "Vagas precisa ser maior que zero");
 
   if (input.schedules.length === 0) throw invalid("schedules", "Informe ao menos um horário");
@@ -371,7 +384,7 @@ export async function generateLessons(ctx: ServiceContext, classGroupId: string,
 /** Aulas de um intervalo, com nomes e contagem de inscritos e presenças. */
 export async function listLessons(
   ctx: ServiceContext,
-  filters: { from: Date; to: Date; id?: string; teacherId?: string; classGroupId?: string; courseId?: string; studentId?: string },
+  filters: { from: Date; to: Date; id?: string; teacherId?: string; classGroupId?: string; courseId?: string; studentId?: string; roomId?: string; moduleId?: string },
 ) {
   const originalPerson = sql<string | null>`(select p2.name from teacher t2 join person p2 on p2.id = t2.person_id where t2.id = ${lesson.originalTeacherId})`;
   const rows = await ctx.db
@@ -379,6 +392,7 @@ export async function listLessons(
       lesson,
       className: classGroup.name,
       individual: classGroup.individual,
+      regime: classGroup.regime,
       capacity: classGroup.capacity,
       modality: classGroup.modality,
       courseName: course.name,
@@ -407,6 +421,8 @@ export async function listLessons(
         filters.teacherId ? eq(lesson.teacherId, filters.teacherId) : undefined,
         filters.classGroupId ? eq(lesson.classGroupId, filters.classGroupId) : undefined,
         filters.courseId ? eq(lesson.courseId, filters.courseId) : undefined,
+        filters.roomId ? eq(lesson.roomId, filters.roomId) : undefined,
+        filters.moduleId ? eq(lesson.moduleId, filters.moduleId) : undefined,
         filters.studentId
           ? sql`exists (select 1 from lesson_student ls where ls.lesson_id = ${lesson.id} and ls.student_id = ${filters.studentId})`
           : undefined,
@@ -417,6 +433,7 @@ export async function listLessons(
     ...r.lesson,
     className: r.className,
     individual: r.individual,
+    regime: r.regime,
     capacity: r.capacity,
     modality: r.modality,
     courseName: r.courseName,

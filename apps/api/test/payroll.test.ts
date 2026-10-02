@@ -22,7 +22,7 @@ beforeAll(async () => {
   const [t] = await db.insert(tenant).values({ name: "Escola Folha", slug: "folha" }).returning();
   base = { db, tenantId: t!.id, actorId: null, timezone: "America/Sao_Paulo", settings: DEFAULT_TENANT_SETTINGS };
   const ctx = at("2026-08-01T12:00:00Z");
-  const [cg] = await db.insert(course).values({ tenantId: t!.id, name: "Grupo", type: "grupo", color: "#111111", capacity: 8, lessonMinutes: 60, packageLessons: 20, cancelNoticeHours: 6, lessonPriceCents: 5000, modalities: ["online"] }).returning();
+  const [cg] = await db.insert(course).values({ tenantId: t!.id, name: "Grupo", type: "regular", color: "#111111", capacity: 8, lessonMinutes: 60, packageLessons: 20, cancelNoticeHours: 6, lessonPriceCents: 5000, modalities: ["online"] }).returning();
   const [cp] = await db.insert(course).values({ tenantId: t!.id, name: "Particular", type: "particular", color: "#222222", capacity: 1, lessonMinutes: 60, packageLessons: 20, cancelNoticeHours: 24, lessonPriceCents: 12000, modalities: ["online"] }).returning();
   // curso em grupo exige módulo na turma
   const { courseModule } = await import("@classa/db");

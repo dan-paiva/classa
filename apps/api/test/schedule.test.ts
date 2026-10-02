@@ -38,7 +38,7 @@ beforeAll(async () => {
     .values({
       tenantId: t!.id,
       name: "Inglês em grupo",
-      type: "grupo",
+      type: "regular",
       color: "#1e46c8",
       capacity: 2,
       lessonMinutes: 60,

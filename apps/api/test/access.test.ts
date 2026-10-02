@@ -35,7 +35,7 @@ beforeAll(async () => {
   t = await createTestApp({ allowedSignupEmails: ["admin@acesso.classa.dev"] });
   admin = await t.adminOf("acesso");
 
-  const { course } = await body<{ course: { id: string; modules: { id: string }[] } }>(await admin.json("/courses", "POST", { name: "Inglês", type: "grupo" }));
+  const { course } = await body<{ course: { id: string; modules: { id: string }[] } }>(await admin.json("/courses", "POST", { name: "Inglês", type: "regular" }));
   const { module } = await body<{ module: { id: string } }>(await admin.json(`/courses/${course.id}/modules`, "POST", { name: "N1" }));
   const mkTeacher = async (name: string, email: string) =>
     (await body<{ teacher: { id: string; personId: string } }>(await admin.json("/teachers", "POST", { person: { name, email }, availability: evenings, courses: [{ courseId: course.id, moduleIds: null }] }))).teacher;

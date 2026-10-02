@@ -90,9 +90,9 @@ async function resetDemo(db: Database) {
   const id = t.id;
   // ordem inversa das dependências
   for (const table of [
-    "membership", "invitation", "workflow_transition", "workflow_card", "lead", "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "credit_entry", "lesson_student", "lesson", "enrollment",
-    "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "person_email", "person",
-    "room", "course_module", "course", "audit_log",
+    "membership", "invitation", "workflow_transition", "workflow_card", "lead", "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "bonus_lesson", "credit_entry", "lesson_student", "lesson", "material_delivery", "enrollment",
+    "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "agenda_event_participant", "agenda_event",
+    "person_email", "person", "room", "course_material", "course_module", "course", "audit_log",
   ]) {
     await db.execute(sql.raw(`delete from ${table} where tenant_id = '${id}'`));
   }
@@ -153,22 +153,27 @@ async function main() {
       return { ...c!, modules: mods };
     };
     const ingles = await mkCourse(
-      { name: "Inglês em Grupo", type: "grupo", color: "#1e46c8", capacity: 8, lessonMinutes: 60, packageLessons: 48, cancelNoticeHours: 6, lessonPriceCents: 6000, modalities: ["online", "presencial"] },
+      { name: "Inglês em Grupo", type: "regular", color: "#1e46c8", capacity: 8, lessonMinutes: 60, packageLessons: 48, cancelNoticeHours: 6, lessonPriceCents: 6000, modalities: ["online", "presencial"] },
       ["Básico 1", "Básico 2", "Intermediário 1", "Intermediário 2", "Avançado"],
     );
     const espanhol = await mkCourse(
-      { name: "Espanhol em Grupo", type: "grupo", color: "#b42318", capacity: 6, lessonMinutes: 60, packageLessons: 36, cancelNoticeHours: 6, lessonPriceCents: 6600, modalities: ["online"] },
+      { name: "Espanhol em Grupo", type: "regular", color: "#b42318", capacity: 6, lessonMinutes: 60, packageLessons: 36, cancelNoticeHours: 6, lessonPriceCents: 6600, modalities: ["online"] },
       ["Básico", "Intermediário"],
     );
     const particular = await mkCourse({
       name: "Inglês Particular", type: "particular", color: "#0b1220", capacity: 1, lessonMinutes: 60, packageLessons: 32, cancelNoticeHours: 24, lessonPriceCents: 14000, modalities: ["online", "presencial"],
     });
     const corporativo = await mkCourse(
-      { name: "Inglês Corporativo", type: "turmas_dedicadas", color: "#0f766e", capacity: 12, lessonMinutes: 60, packageLessons: 36, cancelNoticeHours: 6, lessonPriceCents: 5000, modalities: ["presencial"] },
+      { name: "Inglês Corporativo", type: "regular", color: "#0f766e", capacity: 12, lessonMinutes: 60, packageLessons: 36, cancelNoticeHours: 6, lessonPriceCents: 5000, modalities: ["presencial"] },
       ["Turma Manhã", "Turma Almoço"],
     );
-    await mkCourse({ name: "Workshop de Pronúncia", type: "workshop", color: "#6d28d9", capacity: 20, lessonMinutes: 90, packageLessons: 1, cancelNoticeHours: 24, lessonPriceCents: 8000, modalities: ["online"] });
-    log("5 cursos e 9 módulos");
+    await mkCourse({ name: "Workshop de Pronúncia", type: "regular", color: "#6d28d9", capacity: 20, lessonMinutes: 90, packageLessons: 1, cancelNoticeHours: 24, lessonPriceCents: 8000, modalities: ["online"] });
+    // open entry é um tipo de curso (DOMINIO.md §4.1): o aluno escolhe os horários do nível dele
+    const inglesOpen = await mkCourse(
+      { name: "Inglês Open", type: "open_entry", color: "#a14f9c", capacity: 6, lessonMinutes: 60, packageLessons: 24, cancelNoticeHours: 6, lessonPriceCents: 6000, modalities: ["online", "presencial"] },
+      ["Básico 1", "Básico 2", "Intermediário 1", "Intermediário 2", "Avançado"],
+    );
+    log("6 cursos e 14 níveis");
 
     /* ------------------------------------------------------------------- salas */
     const rooms = {
@@ -185,15 +190,15 @@ async function main() {
     const range = (days: number[], hours: number[]) => days.flatMap((d) => hours.map((h) => slotKey(d, h)));
     const all = (c: { id: string }) => ({ courseId: c.id, moduleIds: null });
     const teacherSpecs = [
-      { avail: range([1, 3, 5], [18, 19, 20, 21]), courses: [all(ingles), all(particular)], rate: 7000 },
+      { avail: range([1, 3, 5], [18, 19, 20, 21]), courses: [all(ingles), all(inglesOpen), all(particular)], rate: 7000 },
       { avail: range([2, 4], [18, 19, 20, 21]), courses: [all(ingles)], rate: 6500 },
       { avail: range([1, 2, 3, 4, 5], [7, 8, 9, 12, 13]), courses: [all(corporativo), all(ingles)], rate: 8000 },
       { avail: range([1, 3], [18, 19, 20]), courses: [all(espanhol)], rate: 7000 },
-      { avail: range([2, 4, 6], [9, 10, 11, 18, 19]), courses: [all(espanhol), { courseId: ingles.id, moduleIds: [ingles.modules[0]!.id, ingles.modules[1]!.id] }], rate: 6000 },
-      { avail: range([6], [8, 9, 10, 11, 12]), courses: [all(ingles), all(particular)], rate: 7500 },
+      { avail: range([2, 4, 6], [9, 10, 11, 18, 19]), courses: [all(espanhol), { courseId: ingles.id, moduleIds: [ingles.modules[0]!.id, ingles.modules[1]!.id] }, { courseId: inglesOpen.id, moduleIds: [inglesOpen.modules[0]!.id, inglesOpen.modules[1]!.id] }], rate: 6000 },
+      { avail: range([6], [8, 9, 10, 11, 12]), courses: [all(ingles), all(inglesOpen), all(particular)], rate: 7500 },
       { avail: range([1, 2, 3, 4, 5], [14, 15, 16, 17]), courses: [all(particular)], rate: 9000 },
       { avail: range([1, 2, 3, 4, 5], [18, 19, 20, 21]), courses: [all(particular), all(ingles)], rate: 8500 },
-      { avail: range([2, 4], [12, 13, 18, 19]), courses: [all(ingles), all(corporativo)], rate: 7000 },
+      { avail: range([2, 4], [12, 13, 18, 19]), courses: [all(ingles), all(inglesOpen), all(corporativo)], rate: 7000 },
       { avail: range([1, 3, 5], [7, 8, 18, 19]), courses: [all(ingles), all(espanhol)], rate: 6500, inactive: true },
     ];
     const teachers = [];
@@ -262,13 +267,12 @@ async function main() {
     const openGroups: typeof groups = [];
     for (const g of openSpecs) {
       const { classGroup } = await createClassGroup(nowCtx, {
-        courseId: ingles.id,
-        moduleId: ingles.modules[g.module]!.id,
+        courseId: inglesOpen.id,
+        moduleId: inglesOpen.modules[g.module]!.id,
         name: g.name,
         teacherId: teachers[g.teacher]!.id,
         roomId: rooms[g.room].id,
         modality: g.room.startsWith("v") ? "online" : "presencial",
-        regime: "open_entry",
         capacity: 6,
         startsOn: start,
         endsOn: end,
@@ -389,9 +393,8 @@ async function main() {
       const startsOn = addDays(today, -30 + i * 3);
       const e = await createEnrollment(at(base, localMidnight(startsOn)), {
         studentId: st.id,
-        regime: "open_entry",
-        courseId: ingles.id,
-        moduleId: ingles.modules[moduleIdx]!.id,
+        courseId: inglesOpen.id,
+        moduleId: inglesOpen.modules[moduleIdx]!.id,
         packageLessons: 24,
         startsOn,
         contract: { installments: 4 },

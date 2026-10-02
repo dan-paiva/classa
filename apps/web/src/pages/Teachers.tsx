@@ -65,7 +65,7 @@ export function Teachers() {
                       <span key={c.courseId} className="title-with-dot">
                         <ColorDot color={c.color} />
                         {c.courseName}
-                        {c.moduleIds ? ` (${c.moduleIds.length} módulos)` : ""}
+                        {c.moduleIds ? ` (${c.moduleIds.length} níveis)` : ""}
                       </span>
                     ))}
                   </td>
@@ -215,7 +215,7 @@ export function TeacherForm() {
       </section>
       <section className="panel stack">
         <h2>Pode dar aula de</h2>
-        <p className="muted small">Marque os cursos. Em cursos com módulos, desmarque os módulos que o professor não dá.</p>
+        <p className="muted small">Marque os cursos. Em cursos com níveis, desmarque os níveis que o professor não dá.</p>
         {courses.data ? <QualificationEditor courses={courses.data.courses} value={qual} onChange={setQual} /> : <Loading />}
         {issues.courses?.[0] && <small className="error">{issues.courses[0]}</small>}
       </section>
@@ -330,7 +330,7 @@ export function TeacherDetail() {
               {t.courses.map((c) => (
                 <li key={c.courseId} className="title-with-dot">
                   <ColorDot color={c.color} />
-                  {c.courseName} {c.moduleIds && <span className="muted small">({c.moduleIds.length} módulos)</span>}
+                  {c.courseName} {c.moduleIds && <span className="muted small">({c.moduleIds.length} níveis)</span>}
                 </li>
               ))}
             </ul>

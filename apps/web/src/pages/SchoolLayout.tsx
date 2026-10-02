@@ -3,6 +3,7 @@ import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { api, type Membership } from "../api.ts";
 import { canDo } from "../lib/permissions.ts";
 import { authClient } from "../auth-client.ts";
+import { useVocab } from "../lib/vocabulary.ts";
 
 /** Cada item aparece só para quem tem a permissão de ver o recurso. */
 const NAV = [
@@ -17,6 +18,7 @@ const NAV = [
   { to: "/e/$slug/leads", label: "Leads", resource: "leads" },
   { to: "/e/$slug/empresas", label: "Empresas", resource: "empresas" },
   { to: "/e/$slug/cursos", label: "Cursos", resource: "cursos" },
+  { to: "/e/$slug/materiais", label: "Materiais", resource: "materiais" },
   { to: "/e/$slug/financeiro", label: "Financeiro", resource: "financeiro" },
   { to: "/e/$slug/folha", label: "Folha", resource: "folha" },
   { to: "/e/$slug/relatorios", label: "Relatórios", resource: "relatorios" },
@@ -38,6 +40,10 @@ export function SchoolLayout() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const queryClient = useQueryClient();
   const school = me.data?.memberships.find((m) => m.slug === slug);
+  const v = useVocab();
+  // turmas e cursos aparecem com o nome que a escola usa (DOMINIO.md §4.6)
+  const label = (item: (typeof NAV)[number]) =>
+    item.resource === "turmas" ? v.classGroup.plural : item.resource === "cursos" ? v.course.plural : item.label;
 
   if (me.isPending) return <div className="auth">Carregando…</div>;
   if (!school) {
@@ -79,7 +85,7 @@ export function SchoolLayout() {
               activeOptions={{ exact: "exact" in item }}
               activeProps={{ className: "nav-link active" }}
             >
-              {item.label}
+              {label(item)}
             </Link>
           ))}
         </nav>

@@ -25,7 +25,7 @@ beforeAll(async () => {
 
   const [c] = await db
     .insert(course)
-    .values({ tenantId: t!.id, name: "Grupo", type: "grupo", color: "#111111", capacity: 8, lessonMinutes: 60, packageLessons: 20, cancelNoticeHours: 6, lessonPriceCents: 5000, modalities: ["online"] })
+    .values({ tenantId: t!.id, name: "Grupo", type: "regular", color: "#111111", capacity: 8, lessonMinutes: 60, packageLessons: 20, cancelNoticeHours: 6, lessonPriceCents: 5000, modalities: ["online"] })
     .returning();
   const [m] = await db.insert(courseModule).values({ tenantId: t!.id, courseId: c!.id, name: "N1", color: "#111111", position: 1 }).returning();
 

@@ -4,26 +4,27 @@ import { useEffect, useState } from "react";
 import {
   allowsModules,
   api,
-  COURSE_TYPE_LABELS,
   issuesOf,
   parseReais,
   type Course,
   type CourseModule,
 } from "../api.ts";
+import { useVocab } from "../lib/vocabulary.ts";
 import { ColorDot, Field, FormError, StatusBadge } from "../ui.tsx";
 import { draftFromRules, RulesFields, rulesFromDraft, type RulesDraft } from "./CourseRulesFields.tsx";
 
 export function CourseDetail() {
   const { slug, courseId } = useParams({ from: "/e/$slug/cursos/$courseId" });
   const query = useQuery({ queryKey: ["course", slug, courseId], queryFn: () => api.course(slug, courseId) });
+  const v = useVocab();
 
   if (query.isPending) return <p>Carregando…</p>;
   if (query.isError) {
     return (
       <div className="stack">
-        <p className="error">Curso não encontrado.</p>
+        <p className="error">{v.course.singular} não encontrado.</p>
         <Link to="/e/$slug/cursos" params={{ slug }} className="btn">
-          Voltar para cursos
+          Voltar para {v.lower("course", true)}
         </Link>
       </div>
     );
@@ -68,12 +69,13 @@ function CourseEditor({ slug, course }: { slug: string; course: Course }) {
 
   const issues = issuesOf(save.error);
   const inactive = !!course.deactivatedAt;
+  const v = useVocab();
 
   return (
     <div className="stack-lg">
       <nav className="crumbs" aria-label="Trilha">
         <Link to="/e/$slug/cursos" params={{ slug }}>
-          Cursos
+          {v.course.plural}
         </Link>
         <span aria-hidden="true">/</span>
         <span>{course.name}</span>
@@ -86,7 +88,7 @@ function CourseEditor({ slug, course }: { slug: string; course: Course }) {
             {course.name}
           </h1>
           <p className="muted">
-            {COURSE_TYPE_LABELS[course.type]} · <StatusBadge inactive={inactive} />
+            {v.kind(course.type)} · <StatusBadge inactive={inactive} />
           </p>
         </div>
         <button
@@ -99,9 +101,19 @@ function CourseEditor({ slug, course }: { slug: string; course: Course }) {
             }
           }}
         >
-          {inactive ? "Reativar curso" : "Inativar curso"}
+          {inactive ? "Reativar" : "Inativar"}
         </button>
       </header>
+
+      <section className="panel stack-sm">
+        <h2>Regras do tipo {v.kind(course.type)}</h2>
+        <ul className="rules">
+          {v.rules(course.type).map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+        <p className="small muted">O tipo não muda depois de criado. Para outro formato, crie outro {v.lower("course")}.</p>
+      </section>
 
       <form
         className="panel stack"
@@ -137,8 +149,10 @@ function CourseEditor({ slug, course }: { slug: string; course: Course }) {
         <Modules slug={slug} course={course} />
       ) : (
         <section className="panel">
-          <h2>Módulos</h2>
-          <p className="muted">Cursos do tipo {COURSE_TYPE_LABELS[course.type].toLowerCase()} não se dividem em módulos.</p>
+          <h2>{v.level.plural}</h2>
+          <p className="muted">
+            {v.kind(course.type)} não se divide em {v.lower("level", true)}: é só o aluno e o professor.
+          </p>
         </section>
       )}
     </div>
@@ -156,16 +170,17 @@ function Modules({ slug, course }: { slug: string; course: Course }) {
     },
   });
   const issues = issuesOf(create.error);
-  const label = course.type === "turmas_dedicadas" ? "turma" : "módulo";
+  const v = useVocab();
 
   return (
     <section className="panel stack">
       <div>
-        <h2>{course.type === "turmas_dedicadas" ? "Turmas do contrato" : "Módulos"}</h2>
+        <h2>{v.level.plural}</h2>
         <p className="muted">
-          {course.type === "turmas_dedicadas"
-            ? "Cada turma do contrato com a empresa ocupa o lugar de um módulo."
-            : "Os níveis do curso, na ordem em que o aluno avança."}
+          Na ordem em que o aluno avança.
+          {course.type === "open_entry"
+            ? ` O aluno só vê e reserva horários do ${v.lower("level")} dele. Sem ${v.lower("level")} cadastrado, não dá para publicar horários.`
+            : ` Cada ${v.lower("classGroup")} é de um ${v.lower("level")}.`}
         </p>
       </div>
 
@@ -184,17 +199,17 @@ function Modules({ slug, course }: { slug: string; course: Course }) {
           create.mutate();
         }}
       >
-        <Field label={`Novo ${label}`} htmlFor="module-name" errors={issues.name}>
+        <Field label={v.novo("level")} htmlFor="module-name" errors={issues.name}>
           <input
             id="module-name"
             value={name}
             required
-            placeholder={course.type === "turmas_dedicadas" ? "Turma 1" : "Nível 1"}
+            placeholder={`${v.level.singular} 1`}
             onChange={(e) => setName(e.target.value)}
           />
         </Field>
         <button type="submit" className="btn" disabled={create.isPending}>
-          Adicionar {label}
+          Adicionar
         </button>
       </form>
       <FormError error={create.error} />

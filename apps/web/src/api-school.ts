@@ -1,3 +1,4 @@
+import type { BonusRule, Vocabulary } from "@classa/domain";
 import { patch, post, request, type Modality } from "./api.ts";
 
 /* -------------------------------------------------------------------- pessoas */
@@ -92,16 +93,10 @@ export type Schedule = { weekday: number; startTime: string };
 /** Como o aluno se liga à turma. Não confundir com modalidade (online/presencial). */
 export const CLASS_REGIMES = ["regular", "open_entry", "particular"] as const;
 export type ClassRegime = (typeof CLASS_REGIMES)[number];
-export const REGIME_LABELS: Record<ClassRegime, string> = {
-  regular: "Turma regular",
-  open_entry: "Open-entry",
-  particular: "Particular",
-};
-export const REGIME_HINTS: Record<ClassRegime, string> = {
-  regular: "O aluno pertence à turma e entra em todas as aulas dela.",
-  open_entry: "Ninguém fica preso à turma: as vagas ficam abertas e o aluno reserva aula a aula, no nível dele.",
-  particular: "Turma de uma vaga, criada na alocação da matrícula.",
-};
+
+/** Vocabulário da escola e regra da aula bônus (DOMINIO.md §4.6 e §5.9.1). */
+export type SchoolSettings = { vocabulary: Vocabulary; custom: Partial<Vocabulary>; bonus: BonusRule };
+export type BonusSummary = { rule: BonusRule; presences: number; earned: number; applied: number; pending: number; nextIn: number | null };
 
 /** Uma aula open-entry com vaga, do ponto de vista de uma matrícula. */
 export type OpenSlot = {
@@ -221,6 +216,8 @@ export type Enrollment = {
   courseColor: string;
   className: string | null;
   moduleName: string | null;
+  /** Paga antes do nivelamento: ainda sem turma nem nível (DOMINIO.md §7.5.1). */
+  levelPending: boolean;
   balance: number;
   used: number;
   granted: number;
@@ -231,6 +228,7 @@ export const CREDIT_KIND_LABELS: Record<string, string> = {
   contratacao: "Contratação",
   renovacao: "Renovação",
   promocional: "Crédito promocional",
+  bonus: "Aula private bônus",
   devolucao: "Devolução",
   presenca: "Presença",
   falta: "Falta",
@@ -347,6 +345,8 @@ export type PayrollPeriod = { id: string; month: string; closedAt: string; netCe
 
 export type Lead = {
   id: string;
+  /** Card do fluxo de entrada do aluno, se já começou. */
+  entry: { cardId: string; stage: string } | null;
   /** A pessoa nasce na captação e o id acompanha até depois de virar aluno. */
   personId: string;
   name: string;
@@ -367,14 +367,98 @@ export type Lead = {
   stalled: boolean;
 };
 
-export type WorkflowCard = { id: string; flow: string; stage: string; title: string; data: Record<string, unknown>; stageChangedAt: string; createdAt: string };
+export type WorkflowCard = {
+  id: string;
+  flow: string;
+  stage: string;
+  title: string;
+  data: Record<string, unknown>;
+  stageChangedAt: string;
+  createdAt: string;
+  /** Quem vê sem operar acompanha o card: já passou por ele (DOMINIO.md §7.5). */
+  canOperate?: boolean;
+};
 export type WorkflowTransition = { id: string; fromStage: string | null; toStage: string; note: string | null; createdAt: string };
 export type FlowOptions = {
   lessons?: { id: string; startsAt: string; endsAt?: string; className: string; courseId: string; moduleId: string | null; teacherId: string | null }[];
   enrollments?: { id: string; studentName: string; className: string; courseId: string; endsOn: string }[];
   absences?: { id: string; studentName: string; startsAt: string; className: string; courseId: string }[];
   students?: { id: string; name: string; cents?: number }[];
+  leads?: { id: string; name: string; cpf: string | null; email: string | null; courseId: string | null; busy: boolean }[];
+  courses?: { id: string; name: string }[];
+  modules?: { id: string; name: string; courseId: string }[];
+  evaluators?: { id: string; name: string }[];
+  classGroups?: { id: string; name: string; courseId: string; moduleId: string | null }[];
+  lostReasons?: string[];
 };
+
+/* ------------------------------------------------------ agenda geral e eventos */
+
+export type AgendaItemType = "aula" | "reuniao" | "evento" | "nivelamento";
+export const AGENDA_TYPE_LABELS: Record<AgendaItemType, string> = { aula: "Aula", reuniao: "Reunião", evento: "Evento", nivelamento: "Nivelamento" };
+export type AgendaItem = {
+  type: AgendaItemType;
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  state: string;
+  cancelled: boolean;
+  color: string | null;
+  detail: string | null;
+  seatsLeft?: number;
+};
+export type AgendaFilters = {
+  from: string;
+  to: string;
+  type?: string;
+  teacherId?: string;
+  roomId?: string;
+  classGroupId?: string;
+  courseId?: string;
+  moduleId?: string;
+  personId?: string;
+  openSlots?: string;
+};
+export type EventKind = Exclude<AgendaItemType, "aula">;
+export type EventState = "agendado" | "realizado" | "nao_compareceu" | "cancelado";
+export const EVENT_STATE_LABELS: Record<EventState, string> = { agendado: "Agendado", realizado: "Realizado", nao_compareceu: "Não compareceu", cancelado: "Cancelado" };
+export type AgendaEvent = {
+  id: string;
+  kind: EventKind;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  location: string | null;
+  notes: string | null;
+  state: EventState;
+  cancelReason: string | null;
+  evaluatedPersonId: string | null;
+  evaluatorPersonId: string | null;
+  courseId: string | null;
+  suggestedModuleId: string | null;
+  resultNotes: string | null;
+  createdBy: string | null;
+  evaluatedName: string | null;
+  evaluatorName: string | null;
+  courseName: string | null;
+  suggestedModuleName: string | null;
+};
+export type EventInput = {
+  kind: EventKind;
+  title: string;
+  /** "AAAA-MM-DDTHH:MM" na hora da escola. */
+  startsAt: string;
+  endsAt: string;
+  location?: string | null;
+  notes?: string | null;
+  participantIds?: string[];
+  evaluatedPersonId?: string | null;
+  evaluatorPersonId?: string | null;
+  courseId?: string | null;
+  force?: boolean;
+};
+export type AgendaPerson = { id: string; name: string; roles: string[]; canEvaluate: boolean };
 export type RenewalItem = { enrollmentId: string; endsOn: string; studentId: string; studentName: string; className: string; courseName: string; balance: number; urgent: boolean };
 
 export type Member = {
@@ -395,7 +479,22 @@ export type MyArea = {
   enrollments: Omit<Enrollment, "studentStatus">[];
   installments: Installment[];
   lessons: { id: string; startsAt: string; endsAt: string; state: LessonState; className: string; courseName: string; courseColor: string; teacherName: string | null; roomName: string | null; roomLink: string | null; enrollmentId?: string; myStatus?: AttendanceStatus; cancelledInTime?: boolean | null }[];
+  materials: { id: string; title: string; url: string; notes: string | null; courseName: string; moduleName: string | null; deliveredAt: string }[];
 };
+
+/** Material do aluno (DOMINIO.md §4.5): link por curso e, opcionalmente, por nível. */
+export type Material = {
+  id: string;
+  courseId: string;
+  moduleId: string | null;
+  title: string;
+  url: string;
+  notes: string | null;
+  deactivatedAt: string | null;
+  courseName: string;
+  moduleName: string | null;
+};
+export type MaterialInput = { courseId: string; moduleId?: string | null; title: string; url: string; notes?: string | null };
 
 export type Alert = { key: string; tone: "danger" | "warn" | "info"; title: string; detail: string; count: number; resource: string };
 
@@ -560,14 +659,32 @@ export const school = {
   moveLead: (slug: string, id: string, body: { to: "avancar" } | { to: "perdido"; reason: string } | { to: "reabrir" }) => request<{ lead: Lead }>(`${t(slug)}/leads/${id}/move`, post(body)),
   convertLead: (slug: string, id: string) => request<{ lead: Lead }>(`${t(slug)}/leads/${id}/convert`, post()),
 
-  flows: (slug: string) => request<{ openCounts: Record<string, number> }>(`${t(slug)}/flows`),
+  flows: (slug: string) => request<{ openCounts: Record<string, number>; stageAreas: Record<string, Record<string, string>> }>(`${t(slug)}/flows`),
+  saveFlowSettings: (slug: string, input: { entryEnrollmentArea: string }) => request(`${t(slug)}/settings/flows`, patch(input)),
+  schoolSettings: (slug: string) => request<SchoolSettings>(`${t(slug)}/settings/school`),
+  saveVocabulary: (slug: string, input: Partial<Vocabulary>) => request<{ vocabulary: Vocabulary }>(`${t(slug)}/settings/vocabulary`, patch(input)),
+  saveBonus: (slug: string, input: BonusRule) => request<{ bonus: BonusRule }>(`${t(slug)}/settings/bonus`, patch(input)),
+  studentBonus: (slug: string, id: string) => request<{ bonus: BonusSummary }>(`${t(slug)}/students/${id}/bonus`),
+  myBonus: (slug: string) => request<{ bonus: BonusSummary }>(`${t(slug)}/minha-area/bonus`),
   cards: (slug: string, flow: string) => request<{ cards: WorkflowCard[] }>(`${t(slug)}/flows/${flow}/cards`),
   flowOptions: (slug: string, flow: string) => request<{ options: FlowOptions }>(`${t(slug)}/flows/${flow}/options`),
   renewalQueue: (slug: string) => request<{ queue: RenewalItem[] }>(`${t(slug)}/renewal-queue`),
   createCard: (slug: string, flow: string, data: Record<string, unknown>) => request<{ card: WorkflowCard }>(`${t(slug)}/flows/${flow}/cards`, post({ data })),
-  card: (slug: string, id: string) => request<{ card: WorkflowCard; transitions: WorkflowTransition[] }>(`${t(slug)}/cards/${id}`),
+  card: (slug: string, id: string) => request<{ card: WorkflowCard; transitions: WorkflowTransition[]; canOperate: boolean }>(`${t(slug)}/cards/${id}`),
   updateCard: (slug: string, id: string, data: Record<string, unknown>) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}`, patch({ data })),
   moveCard: (slug: string, id: string, to: string, note?: string) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}/move`, post({ to, note })),
+  entryNoShow: (slug: string, id: string) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}/no-show`, post()),
+  entryNoSlot: (slug: string, id: string, nextPossibleOn: string) => request<{ card: WorkflowCard }>(`${t(slug)}/cards/${id}/no-slot`, post({ nextPossibleOn })),
+
+  agenda: (slug: string, filters: AgendaFilters) => request<{ items: AgendaItem[] }>(`${t(slug)}/agenda${qs(filters)}`),
+  agendaPeople: (slug: string) => request<{ people: AgendaPerson[] }>(`${t(slug)}/agenda/people`),
+  event: (slug: string, id: string) =>
+    request<{ event: AgendaEvent; participants: { id: string; name: string }[]; can: { edit: boolean; cancel: boolean; record: boolean } }>(`${t(slug)}/events/${id}`),
+  createEvent: (slug: string, input: EventInput) => request<{ event: AgendaEvent }>(`${t(slug)}/events`, post(input)),
+  updateEvent: (slug: string, id: string, input: EventInput) => request<{ event: AgendaEvent }>(`${t(slug)}/events/${id}`, patch(input)),
+  cancelEvent: (slug: string, id: string, reason: string) => request<{ event: AgendaEvent }>(`${t(slug)}/events/${id}/cancel`, post({ reason })),
+  eventResult: (slug: string, id: string, input: { suggestedModuleId: string; resultNotes?: string | null }) => request<{ event: AgendaEvent }>(`${t(slug)}/events/${id}/result`, post(input)),
+  eventNoShow: (slug: string, id: string) => request<{ event: AgendaEvent }>(`${t(slug)}/events/${id}/no-show`, post()),
 
   users: (slug: string) => request<{ members: Member[]; invites: Invite[] }>(`${t(slug)}/users`),
   invite: (slug: string, input: { email?: string | null; personId?: string | null; profileType: string; level: number; areas: Record<string, string> }) =>
@@ -576,6 +693,10 @@ export const school = {
   updateMember: (slug: string, id: string, input: { profileType: string; level: number; areas: Record<string, string> }) => request(`${t(slug)}/users/${id}`, patch(input)),
   setMemberBlocked: (slug: string, id: string, blocked: boolean) => request(`${t(slug)}/users/${id}/${blocked ? "block" : "unblock"}`, post()),
   myArea: (slug: string) => request<MyArea>(`${t(slug)}/minha-area`),
+  materials: (slug: string) => request<{ materials: Material[] }>(`${t(slug)}/materials`),
+  createMaterial: (slug: string, input: MaterialInput) => request<{ material: Material }>(`${t(slug)}/materials`, post(input)),
+  updateMaterial: (slug: string, id: string, input: MaterialInput) => request<{ material: Material }>(`${t(slug)}/materials/${id}`, patch(input)),
+  setMaterialActive: (slug: string, id: string, active: boolean) => request(`${t(slug)}/materials/${id}/${active ? "reactivate" : "deactivate"}`, post()),
   myLesson: (slug: string, lessonId: string, action: "cancelar" | "reagendar") => request(`${t(slug)}/minha-area/aulas/${lessonId}/${action}`, post()),
 
   /** Vagas abertas do próprio aluno, agrupadas por matrícula open-entry. */
