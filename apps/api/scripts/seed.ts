@@ -5,7 +5,7 @@
  *   pnpm db:seed --reset               # apaga a escola "demo" e cria de novo
  *   pnpm db:seed --member voce@x.com   # também dá acesso de admin a quem já tem conta (vários: separados por vírgula)
  *   pnpm db:seed --slug inmula --name "Escola Inmula"   # outra escola de teste, com contas em @inmula.classa.dev
- *   pnpm db:seed --slug alumni --name "Alumni by Better" --theme alumni   # com a identidade visual da escola
+ *   pnpm db:seed --slug inmula --name "Escola Inmula" --theme alumni     # com a identidade visual da Alumni
  *
  * As contas de cada perfil usam a senha classa-demo-123 no Postgres local. Fora dele,
  * a senha é sorteada (ou a de --password) e só aparece no fim da execução.
