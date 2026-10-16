@@ -23,7 +23,7 @@ import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { api, type Membership } from "../api.ts";
 import { canDo } from "../lib/permissions.ts";
 import { authClient } from "../auth-client.ts";
-import { themeOf, useThemeAssets } from "../lib/theme.ts";
+import { ThemeLogo, useThemeAssets } from "../lib/theme.tsx";
 import { useSchoolSettings, useVocab } from "../lib/vocabulary.ts";
 import { effectiveMembership, getViewAs, profileLabel, setViewAs, useDemoProfiles, type DemoProfile } from "../lib/view-as.ts";
 
@@ -107,7 +107,7 @@ export function SchoolLayout() {
     <div className="app" data-theme={theme ?? undefined}>
       <aside className="sidebar">
         <Link to="/" className="brand">
-          {theme ? <img src={themeOf(theme)!.logo} alt={school.name} /> : "Classa"}
+          {theme ? <ThemeLogo theme={theme} title={school.name} /> : "Classa"}
         </Link>
         <div className="school-name">{school.name}</div>
         {demo.data?.demo && <ViewAsPicker slug={slug} profiles={demo.data.profiles} />}

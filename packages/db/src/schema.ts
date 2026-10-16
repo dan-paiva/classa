@@ -102,7 +102,7 @@ export const authVerification = pgTable(
 export type OperatingDay = { weekday: number; open: string; close: string } | { weekday: number; closed: true };
 
 /** Temas que o front sabe desenhar (apps/web/src/index.css, `[data-theme]`). */
-export const SCHOOL_THEMES = ["alumni"] as const;
+export const SCHOOL_THEMES = ["alumni", "inmula"] as const;
 export type SchoolTheme = (typeof SCHOOL_THEMES)[number];
 
 export type TenantSettings = {
