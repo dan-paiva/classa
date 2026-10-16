@@ -1,4 +1,24 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  BookOpen,
+  Building2,
+  CalendarClock,
+  CalendarDays,
+  ChartColumn,
+  GraduationCap,
+  LayoutGrid,
+  LogOut,
+  Magnet,
+  Package,
+  Presentation,
+  ReceiptText,
+  Settings,
+  ShieldCheck,
+  UserRound,
+  Users,
+  Wallet,
+  Workflow,
+} from "lucide-react";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { api, type Membership } from "../api.ts";
 import { canDo } from "../lib/permissions.ts";
@@ -9,23 +29,23 @@ import { effectiveMembership, getViewAs, profileLabel, setViewAs, useDemoProfile
 
 /** Cada item aparece só para quem tem a permissão de ver o recurso. */
 const NAV = [
-  { to: "/e/$slug", label: "Início", exact: true, resource: "painel" },
-  { to: "/e/$slug/minha-area", label: "Minha área", resource: "minha-area" },
-  { to: "/e/$slug/agenda", label: "Agenda", resource: "agenda" },
-  { to: "/e/$slug/acoes", label: "Ações", resource: "fluxos" },
-  { to: "/e/$slug/turmas", label: "Turmas", resource: "turmas" },
-  { to: "/e/$slug/vagas", label: "Vagas", resource: "agenda" },
-  { to: "/e/$slug/alunos", label: "Alunos", resource: "alunos" },
-  { to: "/e/$slug/professores", label: "Professores", resource: "professores" },
-  { to: "/e/$slug/leads", label: "Leads", resource: "leads" },
-  { to: "/e/$slug/empresas", label: "Empresas", resource: "empresas" },
-  { to: "/e/$slug/cursos", label: "Cursos", resource: "cursos" },
-  { to: "/e/$slug/materiais", label: "Materiais", resource: "materiais" },
-  { to: "/e/$slug/financeiro", label: "Financeiro", resource: "financeiro" },
-  { to: "/e/$slug/folha", label: "Folha", resource: "folha" },
-  { to: "/e/$slug/relatorios", label: "Relatórios", resource: "relatorios" },
-  { to: "/e/$slug/auditoria", label: "Auditoria", resource: "auditoria" },
-  { to: "/e/$slug/configuracoes", label: "Configurações", resource: "configuracoes" },
+  { to: "/e/$slug", label: "Início", exact: true, resource: "painel", icon: LayoutGrid },
+  { to: "/e/$slug/minha-area", label: "Minha área", resource: "minha-area", icon: UserRound },
+  { to: "/e/$slug/agenda", label: "Agenda", resource: "agenda", icon: CalendarDays },
+  { to: "/e/$slug/acoes", label: "Ações", resource: "fluxos", icon: Workflow },
+  { to: "/e/$slug/turmas", label: "Turmas", resource: "turmas", icon: Users },
+  { to: "/e/$slug/vagas", label: "Vagas", resource: "agenda", icon: CalendarClock },
+  { to: "/e/$slug/alunos", label: "Alunos", resource: "alunos", icon: GraduationCap },
+  { to: "/e/$slug/professores", label: "Professores", resource: "professores", icon: Presentation },
+  { to: "/e/$slug/leads", label: "Leads", resource: "leads", icon: Magnet },
+  { to: "/e/$slug/empresas", label: "Empresas", resource: "empresas", icon: Building2 },
+  { to: "/e/$slug/cursos", label: "Cursos", resource: "cursos", icon: BookOpen },
+  { to: "/e/$slug/materiais", label: "Materiais", resource: "materiais", icon: Package },
+  { to: "/e/$slug/financeiro", label: "Financeiro", resource: "financeiro", icon: Wallet },
+  { to: "/e/$slug/folha", label: "Folha", resource: "folha", icon: ReceiptText },
+  { to: "/e/$slug/relatorios", label: "Relatórios", resource: "relatorios", icon: ChartColumn },
+  { to: "/e/$slug/auditoria", label: "Auditoria", resource: "auditoria", icon: ShieldCheck },
+  { to: "/e/$slug/configuracoes", label: "Configurações", resource: "configuracoes", icon: Settings },
 ] as const;
 
 function visible(m: Membership, resource: string) {
@@ -54,6 +74,11 @@ export function SchoolLayout() {
   // turmas e cursos aparecem com o nome que a escola usa (DOMINIO.md §4.6)
   const label = (item: (typeof NAV)[number]) =>
     item.resource === "turmas" ? v.classGroup.plural : item.resource === "cursos" ? v.course.plural : item.label;
+
+  const signOut = async () => {
+    await authClient.signOut();
+    queryClient.clear();
+  };
 
   if (me.isPending) return <div className="auth">Carregando…</div>;
   if (!school) {
@@ -96,21 +121,21 @@ export function SchoolLayout() {
               activeOptions={{ exact: "exact" in item }}
               activeProps={{ className: "nav-link active" }}
             >
+              <item.icon size={18} strokeWidth={1.8} aria-hidden />
               {label(item)}
             </Link>
           ))}
         </nav>
-        <div className="sidebar-foot">
-          <span>{me.data?.user.name}</span>
-          <button
-            type="button"
-            className="btn-link"
-            onClick={async () => {
-              await authClient.signOut();
-              queryClient.clear();
-            }}
-          >
-            Sair
+        <div className="sidebar-user">
+          <span className="avatar" aria-hidden>
+            {initials(me.data?.user.name ?? "")}
+          </span>
+          <span className="sidebar-user-name">
+            <strong>{me.data?.user.name}</strong>
+            <small>{profileLabel(school)}</small>
+          </span>
+          <button type="button" className="icon-btn" aria-label="Sair" title="Sair" onClick={signOut}>
+            <LogOut size={18} aria-hidden />
           </button>
         </div>
       </aside>
@@ -167,4 +192,10 @@ function ViewingBanner({ slug, profiles }: { slug: string; profiles: DemoProfile
       </button>
     </div>
   );
+}
+
+/** "Ana Barros Brandão" → "AB", para o avatar do menu com tema. */
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1]![0] : "")).toUpperCase();
 }
