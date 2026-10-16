@@ -5,6 +5,7 @@
  *   pnpm db:seed --reset               # apaga a escola "demo" e cria de novo
  *   pnpm db:seed --member voce@x.com   # também dá acesso de admin a quem já tem conta (vários: separados por vírgula)
  *   pnpm db:seed --slug inmula --name "Escola Inmula"   # outra escola de teste, com contas em @inmula.classa.dev
+ *   pnpm db:seed --slug alumni --name "Alumni by Better" --theme alumni   # com a identidade visual da escola
  *
  * As contas de cada perfil usam a senha classa-demo-123 no Postgres local. Fora dele,
  * a senha é sorteada (ou a de --password) e só aparece no fim da execução.
@@ -18,6 +19,7 @@ import {
   course,
   courseModule,
   DEFAULT_TENANT_SETTINGS,
+  SCHOOL_THEMES,
   eq,
   lesson,
   lessonStudent,
@@ -49,6 +51,11 @@ const opt0 = (name: string) => {
 };
 const SLUG = opt0("--slug") ?? "demo";
 const SCHOOL_NAME = opt0("--name") ?? "Escola Demo";
+const THEME = opt0("--theme");
+if (THEME !== undefined && !(SCHOOL_THEMES as readonly string[]).includes(THEME)) {
+  console.error(`Tema "${THEME}" não existe. Temas: ${SCHOOL_THEMES.join(", ")}.`);
+  process.exit(1);
+}
 /** Domínio das contas de cada perfil: admin@demo.classa.dev, coordenacao@inmula.classa.dev… */
 const ACCOUNT_DOMAIN = `${SLUG}.classa.dev`;
 const TZ = "America/Sao_Paulo";
@@ -132,7 +139,12 @@ async function main() {
     /* ---------------------------------------------------------- escola e acesso */
     // a escola de teste já vem com a aula private bônus ligada (DOMINIO.md §5.9.1)
     // e é de demonstração: o admin pode "ver como" cada perfil sem trocar de login
-    const settings = { ...DEFAULT_TENANT_SETTINGS, bonus: { enabled: true, every: 5 }, demo: true };
+    const settings = {
+      ...DEFAULT_TENANT_SETTINGS,
+      bonus: { enabled: true, every: 5 },
+      demo: true,
+      ...(THEME ? { theme: THEME as (typeof SCHOOL_THEMES)[number] } : {}),
+    };
     const [school] = await db.insert(tenant).values({ name: SCHOOL_NAME, slug: SLUG, settings }).returning();
     const auth = createAuth({ db, secret: "seed-local-nao-usado-em-producao-000000", baseURL: "http://localhost:8787" });
     const demoEmail = `admin@${ACCOUNT_DOMAIN}`;

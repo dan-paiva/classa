@@ -3,7 +3,8 @@ import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
 import { api, type Membership } from "../api.ts";
 import { canDo } from "../lib/permissions.ts";
 import { authClient } from "../auth-client.ts";
-import { useVocab } from "../lib/vocabulary.ts";
+import { themeOf, useThemeAssets } from "../lib/theme.ts";
+import { useSchoolSettings, useVocab } from "../lib/vocabulary.ts";
 import { effectiveMembership, getViewAs, profileLabel, setViewAs, useDemoProfiles, type DemoProfile } from "../lib/view-as.ts";
 
 /** Cada item aparece só para quem tem a permissão de ver o recurso. */
@@ -47,6 +48,9 @@ export function SchoolLayout() {
     demo.data?.profiles,
   );
   const v = useVocab();
+  // escola com identidade própria (settings.theme): cores, fonte e logo dela
+  const theme = useSchoolSettings().data?.theme ?? null;
+  useThemeAssets(theme);
   // turmas e cursos aparecem com o nome que a escola usa (DOMINIO.md §4.6)
   const label = (item: (typeof NAV)[number]) =>
     item.resource === "turmas" ? v.classGroup.plural : item.resource === "cursos" ? v.course.plural : item.label;
@@ -75,10 +79,10 @@ export function SchoolLayout() {
   }
 
   return (
-    <div className="app">
+    <div className="app" data-theme={theme ?? undefined}>
       <aside className="sidebar">
         <Link to="/" className="brand">
-          Classa
+          {theme ? <img src={themeOf(theme)!.logo} alt={school.name} /> : "Classa"}
         </Link>
         <div className="school-name">{school.name}</div>
         {demo.data?.demo && <ViewAsPicker slug={slug} profiles={demo.data.profiles} />}

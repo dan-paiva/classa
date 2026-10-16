@@ -94,8 +94,8 @@ export type Schedule = { weekday: number; startTime: string };
 export const CLASS_REGIMES = ["regular", "open_entry", "particular"] as const;
 export type ClassRegime = (typeof CLASS_REGIMES)[number];
 
-/** Vocabulário da escola e regra da aula bônus (DOMINIO.md §4.6 e §5.9.1). */
-export type SchoolSettings = { vocabulary: Vocabulary; custom: Partial<Vocabulary>; bonus: BonusRule };
+/** Vocabulário da escola, regra da aula bônus (DOMINIO.md §4.6 e §5.9.1) e identidade visual. */
+export type SchoolSettings = { vocabulary: Vocabulary; custom: Partial<Vocabulary>; bonus: BonusRule; theme: "alumni" | null };
 export type BonusSummary = { rule: BonusRule; presences: number; earned: number; applied: number; pending: number; nextIn: number | null };
 
 /** Uma aula open-entry com vaga, do ponto de vista de uma matrícula. */

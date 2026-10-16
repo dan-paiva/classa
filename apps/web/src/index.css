@@ -353,3 +353,37 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); bord
   color: var(--ink);
   font-size: 0.9rem;
 }
+
+/* identidade visual da escola (settings.theme). Alumni: a do portal Alumni by Better,
+   azul #0044bb, menu escuro e Manrope. Só tem modo claro, como o portal. */
+.app[data-theme="alumni"] {
+  --ground: #f8fafc;
+  --surface: #ffffff;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #e2e8f0;
+  --accent: #0044bb;
+  --accent-soft: #e6edf9;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --ok: #16a34a;
+  --ok-soft: #f0fdf4;
+  --warn: #b45309;
+  --warn-soft: #fffbeb;
+  --sidebar: #0f172a;
+  --sidebar-hover: #1e293b;
+  color-scheme: light;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.app[data-theme="alumni"] .sidebar { background: var(--sidebar); border-color: var(--sidebar); color: #cbd5e1; }
+.app[data-theme="alumni"] .brand img { display: block; width: 100%; max-width: 180px; height: auto; padding: 4px 10px 6px; }
+.app[data-theme="alumni"] .school-name,
+.app[data-theme="alumni"] .sidebar-foot,
+.app[data-theme="alumni"] .view-as { color: #94a3b8; }
+.app[data-theme="alumni"] .nav-link { color: #cbd5e1; border-radius: 8px; }
+.app[data-theme="alumni"] .nav-link:hover { background: var(--sidebar-hover); color: #fff; }
+.app[data-theme="alumni"] .nav-link.active { background: var(--accent); color: #fff; }
+.app[data-theme="alumni"] .sidebar .btn-link { color: #fff; }
+.app[data-theme="alumni"] .btn-primary:hover { background: #003399; border-color: #003399; }

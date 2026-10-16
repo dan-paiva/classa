@@ -101,6 +101,10 @@ export const authVerification = pgTable(
 
 export type OperatingDay = { weekday: number; open: string; close: string } | { weekday: number; closed: true };
 
+/** Temas que o front sabe desenhar (apps/web/src/index.css, `[data-theme]`). */
+export const SCHOOL_THEMES = ["alumni"] as const;
+export type SchoolTheme = (typeof SCHOOL_THEMES)[number];
+
 export type TenantSettings = {
   /** weekday: 0 = domingo … 6 = sábado. Horas em "HH:MM". */
   operatingHours: OperatingDay[];
@@ -128,6 +132,11 @@ export type TenantSettings = {
    * trocar de login. Só o seed liga; não há tela nem rota que mude isso.
    */
   demo?: boolean;
+  /**
+   * Identidade visual da escola no lugar da do Classa (cores, fonte e logo). Só os temas
+   * que existem no front; como `demo`, só o seed liga.
+   */
+  theme?: SchoolTheme;
   /** Opcional: escola sem o campo segue o padrão de cada decisão. */
   flows?: {
     /** Área que matricula no fim da entrada do aluno (decisão D16). Padrão: Administrativo. */

@@ -70,3 +70,11 @@ describe("ver como", () => {
     void outra;
   });
 });
+
+describe("identidade visual da escola", () => {
+  it("as configurações dizem o tema, para qualquer membro", async () => {
+    expect(await (await as(coordCookie, "/settings/school")).json()).toMatchObject({ theme: null });
+    await t.db.update(tenant).set({ settings: sql`${tenant.settings} || '{"theme": "alumni"}'::jsonb` }).where(eq(tenant.slug, SLUG));
+    expect(await (await as(coordCookie, "/settings/school")).json()).toMatchObject({ theme: "alumni" });
+  });
+});

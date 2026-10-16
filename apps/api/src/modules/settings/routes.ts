@@ -38,7 +38,7 @@ async function save(c: Context<AppEnv>, key: "vocabulary" | "bonus", value: unkn
 export const settingsRoutes = new Hono<AppEnv>()
   .get("/settings/school", (c) => {
     const s = c.var.tenant.settings;
-    return c.json({ vocabulary: resolveVocabulary(s.vocabulary), custom: s.vocabulary ?? {}, bonus: s.bonus ?? DEFAULT_BONUS_RULE });
+    return c.json({ vocabulary: resolveVocabulary(s.vocabulary), custom: s.vocabulary ?? {}, bonus: s.bonus ?? DEFAULT_BONUS_RULE, theme: s.theme ?? null });
   })
   /**
    * "Ver como" das escolas de demonstração: os perfis que o admin pode emprestar.
