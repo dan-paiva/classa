@@ -407,6 +407,7 @@ export type AgendaItem = {
   color: string | null;
   detail: string | null;
   seatsLeft?: number;
+  link?: string | null;
 };
 export type AgendaFilters = {
   from: string;
@@ -551,7 +552,14 @@ export type AuditEntry = {
   after: unknown;
 };
 
-export type GenerationResult = { created: number; existing: number; skipped: { date: string; startTime: string; reason: string }[]; conflicts: { date: string; startTime: string }[] };
+export type GenerationResult = {
+  created: number;
+  existing: number;
+  skipped: { date: string; startTime: string; reason: string }[];
+  conflicts: { date: string; startTime: string }[];
+  withoutRoom: { date: string; startTime: string; reason: string }[];
+  assignedRoomId: string | null;
+};
 
 /* ---------------------------------------------------------------------- rotas */
 
@@ -559,6 +567,39 @@ const t = (slug: string) => `/t/${slug}`;
 const qs = (params: Record<string, string | undefined>) => {
   const s = new URLSearchParams(Object.entries(params).filter((e): e is [string, string] => !!e[1])).toString();
   return s ? `?${s}` : "";
+};
+
+/* ------------------------------------------------------- contas de vídeo (§4.3.1) */
+export type VideoRoom = { id: string; name: string; link: string | null; videoAccountId: string | null; deactivatedAt: string | null };
+export type VideoAccount = {
+  id: string;
+  name: string;
+  login: string | null;
+  maxConcurrent: number;
+  bufferMinutes: number;
+  notes: string | null;
+  deactivatedAt: string | null;
+  rooms: VideoRoom[];
+};
+export type VideoAccountInput = { name: string; login?: string | null; maxConcurrent?: number; bufferMinutes?: number; notes?: string | null; active?: boolean };
+export type VideoLesson = {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  state: string;
+  roomId: string | null;
+  roomName: string | null;
+  roomLink: string | null;
+  className: string;
+  courseName: string;
+  courseColor: string;
+  teacherName: string | null;
+  avulsa: boolean;
+};
+export type VideoOccupancy = {
+  accounts: (VideoAccount & { lessons: VideoLesson[]; overloads: { startsAt: string; endsAt: string; lessonIds: string[] }[] })[];
+  withoutRoom: VideoLesson[];
+  outsideAccounts: VideoLesson[];
 };
 
 export const school = {
@@ -580,6 +621,11 @@ export const school = {
   setStudentStatus: (slug: string, id: string, status: StudentStatus | "reativar") => request(`${t(slug)}/students/${id}/status`, post({ status })),
 
   rooms: (slug: string) => request<{ rooms: Room[] }>(`${t(slug)}/rooms`),
+  videoAccounts: (slug: string) => request<{ accounts: VideoAccount[]; unassignedRooms: VideoRoom[] }>(`${t(slug)}/video-accounts`),
+  createVideoAccount: (slug: string, input: VideoAccountInput) => request<{ account: VideoAccount }>(`${t(slug)}/video-accounts`, post(input)),
+  updateVideoAccount: (slug: string, id: string, input: VideoAccountInput) => request<{ account: VideoAccount }>(`${t(slug)}/video-accounts/${id}`, patch(input)),
+  setRoomAccount: (slug: string, roomId: string, accountId: string | null) => request(`${t(slug)}/rooms/${roomId}/video-account`, patch({ accountId })),
+  videoOccupancy: (slug: string, range: { from: string; to: string }) => request<VideoOccupancy>(`${t(slug)}/video-occupancy${qs(range)}`),
   createRoom: (slug: string, input: { name: string; kind: Room["kind"]; link?: string | null; capacity?: number | null }) => request<{ room: Room }>(`${t(slug)}/rooms`, post(input)),
 
   classGroups: (slug: string, filters: { courseId?: string; teacherId?: string } = {}) => request<{ classGroups: ClassGroup[] }>(`${t(slug)}/class-groups${qs(filters)}`),

@@ -25,6 +25,7 @@ import { Schools } from "./pages/Schools.tsx";
 import { Settings } from "./pages/Settings.tsx";
 import { StudentDetail, StudentForm, Students } from "./pages/Students.tsx";
 import { TeacherDetail, TeacherForm, Teachers } from "./pages/Teachers.tsx";
+import { VideoAccounts } from "./pages/VideoAccounts.tsx";
 
 function Root() {
   const session = authClient.useSession();
@@ -64,6 +65,7 @@ const leadsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/lead
 const flowsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/acoes", component: Flows });
 const openSlotsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/vagas", component: OpenSlots });
 const myAreaRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/minha-area", component: MyArea });
+const videoRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/contas-zoom", component: VideoAccounts });
 const reportsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/relatorios", component: Reports });
 const auditRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/auditoria", component: Audit });
 const settingsRoute = createRoute({ getParentRoute: () => schoolRoute, path: "/configuracoes", component: Settings });
@@ -79,6 +81,7 @@ const routeTree = rootRoute.addChildren([
     lessonRoute,
     classGroupsRoute,
     classGroupRoute,
+    videoRoute,
     studentsRoute,
     studentNewRoute,
     studentRoute,

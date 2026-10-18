@@ -44,6 +44,7 @@ export const RESOURCES = [
   "cursos",
   "materiais",
   "turmas",
+  "videoconferencia",
   "alunos",
   "professores",
   "financeiro",
@@ -73,6 +74,8 @@ export const RESOURCE_AREAS: Record<Resource, readonly Area[]> = {
   // o acadêmico cuida; o CX entrega; pedagógico e comercial consultam
   materiais: ["aca", "ped", "cx", "com", "adm"],
   turmas: ["ped", "aca", "adm", "com", "cx"],
+  // as contas Zoom: o Pedagógico aloca; Acadêmico, Administrativo e CX consultam (DOMINIO.md §4.3.1)
+  videoconferencia: ["ped", "aca", "adm", "cx"],
   alunos: ["aca", "adm", "com", "cx", "fin", "mkt"],
   professores: ["ped", "aca", "adm", "fin"],
   financeiro: ["fin", "adm"],
@@ -99,6 +102,7 @@ export const RESOURCE_ACT_AREAS: Partial<Record<Resource, readonly Area[]>> = {
   cursos: ["ped", "aca"],
   materiais: ["aca"],
   turmas: ["ped", "aca"],
+  videoconferencia: ["ped"],
   alunos: ["aca", "com", "cx", "adm"],
   professores: ["ped", "adm"],
   financeiro: ["fin"],

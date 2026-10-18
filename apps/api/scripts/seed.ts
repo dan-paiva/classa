@@ -41,6 +41,7 @@ import { cancelLesson, cancelStudentLesson, changeLessonTeacher, concludeLesson,
 import { createRoom, createStudent, createTeacher, setStudentStatus } from "../src/services/people.ts";
 import { closeMonth, markLinePaid, overrideLessonRate, requestSupport, setClassGroupTeacherRate, computePayroll } from "../src/services/payroll.ts";
 import { createClassGroup, generateLessons, importNationalHolidays } from "../src/services/schedule.ts";
+import { createVideoAccount } from "../src/services/video.ts";
 import { convertLead, createCard, createLead, flowOptions, moveCard, moveLead, updateCard } from "../src/services/workflows.ts";
 import { setPersonEmail } from "../src/services/people.ts";
 
@@ -111,7 +112,7 @@ async function resetDemo(db: Database) {
   for (const table of [
     "membership", "invitation", "workflow_transition", "workflow_card", "lead", "company_charge", "payroll_line", "payroll_period", "payment", "installment", "contract", "bonus_lesson", "credit_entry", "lesson_student", "lesson", "material_delivery", "enrollment",
     "class_schedule", "class_group", "holiday", "teacher_course", "teacher", "student", "company", "agenda_event_participant", "agenda_event",
-    "person_email", "person", "room", "course_material", "course_module", "course", "audit_log",
+    "person_email", "person", "room", "video_account", "course_material", "course_module", "course", "audit_log",
   ]) {
     await db.execute(sql.raw(`delete from ${table} where tenant_id = '${id}'`));
   }
@@ -205,15 +206,20 @@ async function main() {
     log("6 cursos e 14 níveis");
 
     /* ------------------------------------------------------------------- salas */
+    // duas contas Zoom de duas reuniões cada: com as turmas abaixo, a quinta e a sexta acabam
+    // disputando vaga, e a tela Contas Zoom mostra a aula que mudou de conta e a que ficou sem sala
+    const zoom1 = await createVideoAccount(nowCtx, { name: "Zoom 1", login: `zoom1@${SLUG}.classa.dev` });
+    const zoom2 = await createVideoAccount(nowCtx, { name: "Zoom 2", login: `zoom2@${SLUG}.classa.dev` });
     const rooms = {
-      v1: await createRoom(nowCtx, { name: "Sala Virtual 1", kind: "virtual", link: "https://meet.jit.si/classa-demo-sala-1" }),
-      v2: await createRoom(nowCtx, { name: "Sala Virtual 2", kind: "virtual", link: "https://meet.jit.si/classa-demo-sala-2" }),
-      v3: await createRoom(nowCtx, { name: "Sala Virtual 3", kind: "virtual", link: "https://meet.jit.si/classa-demo-sala-3" }),
+      v1: await createRoom(nowCtx, { name: "Sala Virtual 1", kind: "virtual", link: "https://meet.jit.si/classa-demo-sala-1", videoAccountId: zoom1.id }),
+      v2: await createRoom(nowCtx, { name: "Sala Virtual 2", kind: "virtual", link: "https://meet.jit.si/classa-demo-sala-2", videoAccountId: zoom1.id }),
+      v3: await createRoom(nowCtx, { name: "Sala Virtual 3", kind: "virtual", link: "https://meet.jit.si/classa-demo-sala-3", videoAccountId: zoom2.id }),
+      v4: await createRoom(nowCtx, { name: "Sala Virtual 4", kind: "virtual", link: "https://meet.jit.si/classa-demo-sala-4", videoAccountId: zoom2.id }),
       s101: await createRoom(nowCtx, { name: "Sala 101", kind: "presencial", capacity: 10 }),
       s102: await createRoom(nowCtx, { name: "Sala 102", kind: "presencial", capacity: 12 }),
       aud: await createRoom(nowCtx, { name: "Auditório", kind: "auditorio", capacity: 40 }),
     };
-    log("6 salas");
+    log("2 contas Zoom e 7 salas");
 
     /* -------------------------------------------------------------- professores */
     const range = (days: number[], hours: number[]) => days.flatMap((d) => hours.map((h) => slotKey(d, h)));
@@ -229,6 +235,7 @@ async function main() {
       { avail: range([1, 2, 3, 4, 5], [18, 19, 20, 21]), courses: [all(particular), all(ingles)], rate: 8500 },
       { avail: range([2, 4], [12, 13, 18, 19]), courses: [all(ingles), all(inglesOpen), all(corporativo)], rate: 7000 },
       { avail: range([1, 3, 5], [7, 8, 18, 19]), courses: [all(ingles), all(espanhol)], rate: 6500, inactive: true },
+      { avail: range([1, 3], [18, 19, 20]), courses: [all(particular)], rate: 8000 },
     ];
     const teachers = [];
     for (const spec of teacherSpecs) {
@@ -345,19 +352,22 @@ async function main() {
     log("3 empresas (B2B perto de vencer e acima das licenças, B2B2C com subsídio, B2B de turmas dedicadas)");
 
     /* -------------------------------------------------------- aulas particulares */
-    const particularSpecs: [number, [number, string][], "online" | "presencial", keyof typeof rooms][] = [
+    // sala null = o sistema escolhe a conta Zoom com vaga (as duas últimas disputam segunda 19h)
+    const particularSpecs: [number, [number, string][], "online" | "presencial", keyof typeof rooms | null][] = [
       [6, [[1, "15:00"], [3, "15:00"]], "online", "v1"],
       [6, [[2, "16:00"]], "presencial", "s101"],
       [7, [[5, "19:00"]], "online", "v2"],
       [7, [[2, "21:00"], [4, "21:00"]], "online", "v3"],
       [0, [[5, "18:00"]], "online", "v3"],
       [5, [[6, "12:00"]], "presencial", "s102"],
+      [7, [[1, "19:00"], [3, "19:00"]], "online", null],
+      [10, [[1, "19:00"], [3, "19:00"]], "online", null],
     ];
     const particulares = [];
     for (const [i, [teacherIdx, schedules, modality, roomKey]] of particularSpecs.entries()) {
       const s = students[i]!;
       const { classGroup } = await createClassGroup(nowCtx, {
-        courseId: particular.id, name: `Private · ${s.name}`, teacherId: teachers[teacherIdx]!.id, roomId: rooms[roomKey].id, modality,
+        courseId: particular.id, name: `Private · ${s.name}`, teacherId: teachers[teacherIdx]!.id, roomId: roomKey ? rooms[roomKey].id : null, modality,
         startsOn: start, endsOn: end, schedules: schedules.map(([weekday, startTime]) => ({ weekday, startTime })),
       });
       await setClassGroupTeacherRate(nowCtx, classGroup.id, pick([10000, 12000, 12000, 15000]));
@@ -371,6 +381,7 @@ async function main() {
       const r = await generateLessons(nowCtx, g.id, { from: start, to: addDays(today, 56) });
       generated += r.created;
       if (r.conflicts.length) log(`atenção: ${r.conflicts.length} choques em ${g.name}`);
+      if (r.withoutRoom.length) log(`${g.name}: ${r.withoutRoom.length} aulas sem sala (${r.withoutRoom[0]!.reason.toLowerCase()})`);
     }
     log(`${generated} aulas geradas (7 semanas para trás e 8 para a frente)`);
 

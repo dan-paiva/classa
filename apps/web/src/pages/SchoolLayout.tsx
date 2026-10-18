@@ -17,6 +17,7 @@ import {
   UserRound,
   Users,
   Wallet,
+  Video,
   Workflow,
 } from "lucide-react";
 import { Link, Outlet, useNavigate, useParams } from "@tanstack/react-router";
@@ -35,6 +36,7 @@ const NAV = [
   { to: "/e/$slug/acoes", label: "Ações", resource: "fluxos", icon: Workflow },
   { to: "/e/$slug/turmas", label: "Turmas", resource: "turmas", icon: Users },
   { to: "/e/$slug/vagas", label: "Vagas", resource: "agenda", icon: CalendarClock },
+  { to: "/e/$slug/contas-zoom", label: "Contas Zoom", resource: "videoconferencia", icon: Video },
   { to: "/e/$slug/alunos", label: "Alunos", resource: "alunos", icon: GraduationCap },
   { to: "/e/$slug/professores", label: "Professores", resource: "professores", icon: Presentation },
   { to: "/e/$slug/leads", label: "Leads", resource: "leads", icon: Magnet },

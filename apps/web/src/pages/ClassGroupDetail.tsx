@@ -23,7 +23,9 @@ export function ClassGroupDetail() {
       alert(
         `${g.created} aulas novas, ${g.existing} já existiam.` +
           (g.skipped.length ? `\n${g.skipped.length} horários pulados (feriado, domingo ou fora do funcionamento).` : "") +
-          (g.conflicts.length ? `\n${g.conflicts.length} choques de horário com outras aulas do professor ou da sala.` : ""),
+          (g.conflicts.length ? `\n${g.conflicts.length} choques de horário com outras aulas do professor ou da sala.` : "") +
+          (g.assignedRoomId ? "\nA turma ganhou uma sala virtual numa conta Zoom com vaga nesses horários." : "") +
+          (g.withoutRoom.length ? `\n${g.withoutRoom.length} aulas ficaram sem sala: ${g.withoutRoom[0]!.reason.toLowerCase()}. Veja em Contas Zoom.` : ""),
       );
     },
   });

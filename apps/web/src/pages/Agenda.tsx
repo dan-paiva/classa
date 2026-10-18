@@ -237,10 +237,19 @@ function ItemCard({ slug, item }: { slug: string; item: AgendaItem }) {
       </span>
     </>
   );
+  // o link da sala fica fora do cartão: o cartão já é um link para a aula
+  const join = item.link && (item.state === "agendada" || item.state === "em_andamento");
   return item.type === "aula" ? (
-    <Link to="/e/$slug/aulas/$lessonId" params={{ slug, lessonId: item.id }} className={className} style={style}>
-      {content}
-    </Link>
+    <>
+      <Link to="/e/$slug/aulas/$lessonId" params={{ slug, lessonId: item.id }} className={className} style={style}>
+        {content}
+      </Link>
+      {join && (
+        <a href={item.link!} target="_blank" rel="noreferrer" className="card-join">
+          Entrar na sala
+        </a>
+      )}
+    </>
   ) : (
     <Link to="/e/$slug/eventos/$eventId" params={{ slug, eventId: item.id }} className={className} style={style}>
       {content}

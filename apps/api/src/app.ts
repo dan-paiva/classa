@@ -16,6 +16,7 @@ import { payrollRoutes } from "./modules/payroll/routes.ts";
 import { peopleRoutes } from "./modules/people/routes.ts";
 import { portalRoutes } from "./modules/portal/routes.ts";
 import { scheduleRoutes } from "./modules/schedule/routes.ts";
+import { videoRoutes } from "./modules/video/routes.ts";
 import { settingsRoutes } from "./modules/settings/routes.ts";
 import { invitationRoutes, userRoutes } from "./modules/users/routes.ts";
 import { workflowRoutes } from "./modules/workflows/routes.ts";
@@ -105,6 +106,7 @@ export function createApp(resolve: (env: unknown) => Services) {
     .route("/t/:slug", materialRoutes)
     .route("/t/:slug", peopleRoutes)
     .route("/t/:slug", scheduleRoutes)
+    .route("/t/:slug", videoRoutes)
     .route("/t/:slug", agendaRoutes)
     .route("/t/:slug", financeRoutes)
     .route("/t/:slug", payrollRoutes)

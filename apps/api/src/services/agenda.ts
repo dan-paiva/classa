@@ -288,6 +288,8 @@ export type AgendaItem = {
   detail: string | null;
   /** Vaga open-entry: quantas sobram. */
   seatsLeft?: number;
+  /** Aula online: o link da sala desta aula (pode ser outro que o da turma, §4.3.1). */
+  link?: string | null;
 };
 
 export type AgendaFilters = {
@@ -348,6 +350,7 @@ async function lessonItems(ctx: ServiceContext, f: AgendaFilters, scope: AgendaS
     cancelled: l.state === "cancelada",
     color: l.courseColor,
     detail: [l.teacherName ?? "sem professor", l.roomName ?? "sem sala", `${l.enrolled}/${l.capacity}`].join(" · "),
+    link: l.roomLink,
     ...(l.regime === "open_entry" ? { seatsLeft: l.capacity - l.enrolled } : {}),
   }));
 }

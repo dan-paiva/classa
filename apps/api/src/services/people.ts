@@ -505,17 +505,21 @@ export async function updateStudentAvailability(ctx: ServiceContext, id: string,
 
 /* -------------------------------------------------------------------- sala */
 
-export async function createRoom(ctx: ServiceContext, input: { name: string; kind: RoomKind; link?: string | null; capacity?: number | null }) {
+export async function createRoom(
+  ctx: ServiceContext,
+  input: { name: string; kind: RoomKind; link?: string | null; capacity?: number | null; videoAccountId?: string | null },
+) {
   const name = input.name.trim();
   if (name.length < 2) throw invalid("name", "Nome precisa de pelo menos 2 caracteres");
   const link = input.link?.trim() || null;
   if (input.kind === "virtual" && !link) throw invalid("link", "Sala virtual precisa do link da reunião");
   if (link && !/^https?:\/\/\S+$/.test(link)) throw invalid("link", "Link precisa começar com https://");
+  if (input.videoAccountId && input.kind !== "virtual") throw invalid("videoAccountId", "Só sala virtual fica numa conta de vídeo");
   try {
     return await ctx.db.transaction(async (tx) => {
       const [row] = await tx
         .insert(room)
-        .values({ tenantId: ctx.tenantId, name, kind: input.kind, link, capacity: input.capacity ?? null })
+        .values({ tenantId: ctx.tenantId, name, kind: input.kind, link, capacity: input.capacity ?? null, videoAccountId: input.videoAccountId ?? null })
         .returning();
       await audit(tx, { tenantId: ctx.tenantId, actorId: ctx.actorId, entity: "room", entityId: row!.id, action: "create", after: row });
       return row!;
