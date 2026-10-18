@@ -210,8 +210,16 @@ async function companyMetrics(ctx: ServiceContext, companies: CompanyRow[]) {
     .from(company)
     .innerJoin(sql`student s`, sql`s.company_id = ${company.id}`)
     .innerJoin(sql`enrollment e`, sql`e.student_id = s.id`)
-    .innerJoin(sql`credit_entry ce`, sql`ce.enrollment_id = e.id and ce.amount < 0 and ce.kind in ('presenca', 'falta', 'cancelamento_tardio') and (ce.created_at at time zone ${ctx.timezone})::date between ${company.startsOn} and ${company.endsOn}`)
-    .where(inArray(company.id, ids))
+    .innerJoin(sql`credit_entry ce`, sql`ce.enrollment_id = e.id and ce.amount < 0 and ce.kind in ('presenca', 'falta', 'cancelamento_tardio')`)
+    // a data que conta é a da aula, e não a do lançamento: presença registrada depois do
+    // fim do contrato continua sendo consumo do contrato
+    .leftJoin(sql`lesson cl`, sql`cl.id = ce.lesson_id`)
+    .where(
+      and(
+        inArray(company.id, ids),
+        sql`(coalesce(cl.starts_at, ce.created_at) at time zone ${ctx.timezone})::date between ${company.startsOn} and ${company.endsOn}`,
+      ),
+    )
     .groupBy(company.id);
 
   const attendance = await ctx.db
