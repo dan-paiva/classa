@@ -462,3 +462,27 @@ textarea { font: inherit; padding: 8px 10px; border: 1px solid var(--line); bord
 .app:is([data-theme="alumni"], [data-theme="inmula"]) .nav-link:hover svg { color: #fff; }
 .app:is([data-theme="alumni"], [data-theme="inmula"]) .view-as select { background: var(--sidebar-hover); color: #fff; border-color: #334155; }
 .app:is([data-theme="alumni"], [data-theme="inmula"]) .btn-primary:hover { background: #003399; border-color: #003399; }
+
+/* ---------------------------------------------- contas Zoom: a régua do dia por conta */
+.vgrid-days { display: flex; gap: 6px; flex-wrap: wrap; }
+.vgrid-head, .vgrid-row { display: grid; grid-template-columns: 200px 1fr; gap: 12px; align-items: start; }
+.vgrid-hours { position: relative; height: 16px; font-size: 12px; color: var(--muted); }
+.vgrid-hours span { position: absolute; transform: translateX(-50%); }
+.vgrid-label { display: flex; flex-direction: column; gap: 2px; padding-top: 4px; }
+.vgrid-track { position: relative; background: var(--ground); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.vgrid-lane { position: absolute; left: 0; right: 0; height: 28px; border-bottom: 1px dashed var(--line); }
+.vgrid-lane-over { background: var(--danger-soft); }
+.vgrid-lesson {
+  position: absolute; height: 24px; padding: 0 6px; font-size: 12px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 4px; text-decoration: none;
+}
+.vgrid-lesson:hover, .vgrid-lesson:focus-visible { z-index: 1; overflow: visible; box-shadow: var(--shadow, 0 2px 8px rgba(0, 0, 0, 0.15)); }
+.vgrid-lesson-avulsa { border-style: dashed; border-left-style: solid; }
+.vgrid-lesson-over { background: var(--danger-soft); color: var(--danger); border-color: var(--danger); }
+@media (max-width: 720px) {
+  .vgrid-head, .vgrid-row { grid-template-columns: 1fr; }
+  .vgrid-head > span { display: none; }
+  .vgrid-track { overflow-x: auto; min-width: 0; }
+}
+.card-join { display: block; margin: -4px 0 8px; padding: 6px 10px; font-size: 13px; font-weight: 600; text-align: center; color: var(--accent); background: var(--accent-soft); border-radius: 6px; text-decoration: none; }
+.card-join:hover, .card-join:focus-visible { text-decoration: underline; }

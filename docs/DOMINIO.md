@@ -182,6 +182,29 @@ Só em cursos regular e open entry. Tem ordem, nome e cor. No código e no banco
 
 **Corrigido:** a mesma sala não pode ter duas aulas sobrepostas (constraint no banco).
 
+#### 4.3.1 Contas de videoconferência
+A sala virtual é a reunião recorrente de uma turma (o link que professor e alunos usam). Ela mora numa **conta de vídeo** — um usuário Zoom licenciado —, e é a conta que tem o limite: no Zoom, cada usuário hospeda no máximo **duas reuniões ao mesmo tempo**, e abrir a terceira derruba a mais antiga, que quase sempre é a aula que passou do horário.
+
+| Campo | Regra |
+| --- | --- |
+| nome | único por escola |
+| login | o e-mail do usuário Zoom. Senha nunca |
+| reuniões ao mesmo tempo | padrão 2, de 1 a 10 |
+| folga | minutos antes e depois de cada aula em que a conta continua ocupada. Padrão 10, de 0 a 60 |
+| ativa | |
+
+- **A regra:** em nenhum instante a conta tem mais aulas abertas que o limite, contando cada aula do início menos a folga ao fim mais a folga. Aula que termina às 10h e aula que começa às 10h05 se sobrepõem com folga de 10 minutos. Aula cancelada não ocupa.
+- **Na geração das aulas** (5.2) de uma turma online, o sistema escolhe a sala de cada aula:
+  1. turma sem sala: a primeira sala cuja conta comporta **todas** as aulas geradas vira a sala da turma (o link fixo);
+  2. turma com sala: a aula fica nela se a conta couber;
+  3. se não couber, a aula vai para uma sala de outra conta **só naquela data** (o link dela é outro);
+  4. se nenhuma conta couber, a aula fica **sem sala** e a geração diz por quê. Nunca uma terceira reunião em silêncio.
+  Entre as que cabem, prefere a sala da turma, depois a conta menos ocupada. A escolha trava as contas da escola até o fim da transação, para duas gerações ao mesmo tempo não contarem o mesmo vazio.
+- **Sala virtual sem conta** fica fora da regra: o sistema não confere o limite dela e a tela aponta.
+- **Tela Contas Zoom** (Pedagógico opera; Acadêmico, Administrativo e CX consultam): a régua do dia com uma faixa por reunião aberta em cada conta, as aulas acima do limite, as que saíram da sala da turma e as que ficaram sem sala; e o cadastro de contas e salas.
+- **Professor e aluno** veem "Entrar na sala" na agenda e na área do aluno, com o link da sala **daquela aula**.
+- Fica de fora por ora: criar a reunião pela API do Zoom (o link é cadastrado na sala); os eventos e nivelamentos (5.8) ainda não entram na conta.
+
 ### 4.4 Currículo
 - Currículo de **produto** (sequência ligada a módulos ou turmas) ou **acervo** (biblioteca avulsa, sem ordem).
 - Versões: `rascunho` → `publicada`. As aulas só leem a publicada. Existe no máximo um rascunho. Publicar exige ao menos 1 conteúdo.

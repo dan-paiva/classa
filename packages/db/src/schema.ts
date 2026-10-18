@@ -467,6 +467,36 @@ export const student = pgTable(
 export const ROOM_KINDS = ["virtual", "presencial", "auditorio"] as const;
 export type RoomKind = (typeof ROOM_KINDS)[number];
 
+/**
+ * Conta de videoconferência (DOMINIO.md §4.3.1): um usuário Zoom licenciado. Hospeda no máximo
+ * `maxConcurrent` reuniões ao mesmo tempo; a próxima derruba a mais antiga. As salas virtuais
+ * (reuniões recorrentes) ficam penduradas nela.
+ */
+export const videoAccount = pgTable(
+  "video_account",
+  {
+    id: id(),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    name: text("name").notNull(),
+    /** O login da conta (e-mail do usuário Zoom). Nunca a senha. */
+    login: text("login"),
+    maxConcurrent: integer("max_concurrent").notNull().default(2),
+    /** Minutos antes e depois de cada aula em que a conta continua ocupada. */
+    bufferMinutes: integer("buffer_minutes").notNull().default(10),
+    notes: text("notes"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deactivatedAt: tstz("deactivated_at"),
+  },
+  (t) => [
+    unique("video_account_tenant_name_uq").on(t.tenantId, t.name),
+    check("video_account_max", sql`${t.maxConcurrent} between 1 and 10`),
+    check("video_account_buffer", sql`${t.bufferMinutes} between 0 and 60`),
+  ],
+);
+
 export const room = pgTable(
   "room",
   {
@@ -478,6 +508,8 @@ export const room = pgTable(
     kind: text("kind", { enum: ROOM_KINDS }).notNull(),
     link: text("link"),
     capacity: integer("capacity"),
+    /** Sala virtual: a conta de vídeo em que a reunião está. Vazio = fora da regra das contas. */
+    videoAccountId: uuid("video_account_id").references(() => videoAccount.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deactivatedAt: tstz("deactivated_at"),

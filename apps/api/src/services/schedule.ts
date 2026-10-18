@@ -28,6 +28,7 @@ import { conflict, invalid, notFound, unprocessable } from "../http/errors.ts";
 import { isUniqueViolation, pgErrorCode } from "../http/pg-errors.ts";
 import type { Db, ServiceContext } from "./context.ts";
 import { isQualified } from "./people.ts";
+import { lockVideoAccounts, planVideoRooms, videoCandidates } from "./video.ts";
 
 
 /* ---------------------------------------------------------------- feriados */
@@ -303,6 +304,10 @@ export type GenerationResult = {
   existing: number;
   skipped: { date: string; startTime: string; reason: string }[];
   conflicts: { date: string; startTime: string }[];
+  /** aulas online que nenhuma conta de vídeo comportou: ficaram sem sala */
+  withoutRoom: { date: string; startTime: string; reason: string }[];
+  /** sala virtual que a turma ganhou nesta geração, quando não tinha */
+  assignedRoomId: string | null;
 };
 
 /**
@@ -325,37 +330,64 @@ export async function generateLessons(ctx: ServiceContext, classGroupId: string,
     timeZone: ctx.timezone,
   });
 
-  const result: GenerationResult = { created: 0, existing: 0, skipped, conflicts: [] };
+  const result: GenerationResult = { created: 0, existing: 0, skipped, conflicts: [], withoutRoom: [], assignedRoomId: null };
   const createdIds: string[] = [];
-  for (const slot of slots) {
-    try {
-      const inserted = await ctx.db.transaction(async (tx) =>
-        tx
-          .insert(lesson)
-          .values({
-            tenantId: ctx.tenantId,
-            classGroupId: cg.id,
-            courseId: cg.courseId,
-            moduleId: cg.moduleId,
-            startsAt: slot.startsAt,
-            endsAt: slot.endsAt,
-            teacherId: cg.teacherId,
-            roomId: cg.roomId,
-          })
-          .onConflictDoNothing({ target: [lesson.classGroupId, lesson.startsAt] })
-          .returning({ id: lesson.id }),
+  // Uma transação só, com as contas de vídeo travadas: a sala de cada aula é decidida contando
+  // as aulas que já ocupam a conta, e outra geração ao mesmo tempo não pode contar o mesmo vazio.
+  await ctx.db.transaction(async (tx) => {
+    let rooms: (string | null)[] = slots.map(() => cg.roomId);
+    if (cg.modality === "online" && slots.length) {
+      await lockVideoAccounts(tx, ctx);
+      const existing = new Set(
+        (await tx.select({ startsAt: lesson.startsAt }).from(lesson).where(eq(lesson.classGroupId, cg.id))).map((l) => l.startsAt.getTime()),
       );
-      if (inserted.length) {
-        result.created++;
-        createdIds.push(inserted[0]!.id);
-      } else {
-        result.existing++;
+      const fresh = slots.filter((s) => !existing.has(s.startsAt.getTime()));
+      const window = { from: slots[0]!.startsAt, to: slots.at(-1)!.endsAt };
+      const plan = planVideoRooms(
+        await videoCandidates(tx, ctx, window, cg.id),
+        fresh.map((s) => ({ start: s.startsAt.getTime(), end: s.endsAt.getTime() })),
+        cg.roomId,
+      );
+      const byStart = new Map(fresh.map((s, i) => [s.startsAt.getTime(), plan.rooms[i] ?? null]));
+      rooms = slots.map((s) => (byStart.has(s.startsAt.getTime()) ? byStart.get(s.startsAt.getTime())! : cg.roomId));
+      for (const r of plan.refused) result.withoutRoom.push({ date: fresh[r.index]!.date, startTime: fresh[r.index]!.startTime, reason: r.reason });
+      if (plan.classRoomId) {
+        await tx.update(classGroup).set({ roomId: plan.classRoomId, updatedAt: ctx.now }).where(eq(classGroup.id, cg.id));
+        result.assignedRoomId = plan.classRoomId;
       }
-    } catch (err) {
-      if (pgErrorCode(err) === "23P01") result.conflicts.push({ date: slot.date, startTime: slot.startTime });
-      else throw err;
     }
-  }
+
+    for (const [i, slot] of slots.entries()) {
+      try {
+        // ponto de salvamento: o choque de uma aula não desfaz as outras
+        const inserted = await tx.transaction(async (sp) =>
+          sp
+            .insert(lesson)
+            .values({
+              tenantId: ctx.tenantId,
+              classGroupId: cg.id,
+              courseId: cg.courseId,
+              moduleId: cg.moduleId,
+              startsAt: slot.startsAt,
+              endsAt: slot.endsAt,
+              teacherId: cg.teacherId,
+              roomId: rooms[i] ?? null,
+            })
+            .onConflictDoNothing({ target: [lesson.classGroupId, lesson.startsAt] })
+            .returning({ id: lesson.id }),
+        );
+        if (inserted.length) {
+          result.created++;
+          createdIds.push(inserted[0]!.id);
+        } else {
+          result.existing++;
+        }
+      } catch (err) {
+        if (pgErrorCode(err) === "23P01") result.conflicts.push({ date: slot.date, startTime: slot.startTime });
+        else throw err;
+      }
+    }
+  });
 
   if (createdIds.length) {
     const active = await ctx.db
@@ -375,7 +407,7 @@ export async function generateLessons(ctx: ServiceContext, classGroupId: string,
       entity: "class_group",
       entityId: cg.id,
       action: "update",
-      after: { generated: result.created, range, conflicts: result.conflicts.length },
+      after: { generated: result.created, range, conflicts: result.conflicts.length, withoutRoom: result.withoutRoom.length, assignedRoomId: result.assignedRoomId },
     });
   }
   return result;

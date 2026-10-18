@@ -191,7 +191,7 @@ export const peopleRoutes = new Hono<AppEnv>()
   .post("/rooms", requireAdmin, async (c) => {
     const { data, error } = await parseBody(
       c,
-      z.object({ name: z.string({ error: "Informe o nome" }), kind: z.enum(ROOM_KINDS, { error: "Escolha o tipo de sala" }), link: z.string().nullish(), capacity: z.number().int().positive().nullish() }),
+      z.object({ name: z.string({ error: "Informe o nome" }), kind: z.enum(ROOM_KINDS, { error: "Escolha o tipo de sala" }), link: z.string().nullish(), capacity: z.number().int().positive().nullish(), videoAccountId: z.string().uuid().nullish() }),
     );
     if (error) return error;
     return c.json({ room: await createRoom(contextFrom(c), data) }, 201);
